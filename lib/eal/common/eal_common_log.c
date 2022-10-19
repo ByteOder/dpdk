@@ -29,6 +29,9 @@ static struct rte_logs {
 	uint32_t type;  /**< Bitfield with enabled logs. */
 	uint32_t level; /**< Log level. */
 	FILE *file;     /**< Output file set by rte_openlog_stream, or NULL. */
+	FILE *f[64];
+	uint32_t t[64];
+	uint32_t l[64];
 	size_t dynamic_types_len;
 	struct rte_log_dynamic_type *dynamic_types;
 } rte_logs = {
@@ -75,6 +78,18 @@ int
 rte_openlog_stream(FILE *f)
 {
 	rte_logs.file = f;
+	return 0;
+}
+
+int
+rte_log_init(FILE *f, uint32_t logtype)
+{
+	if (rte_logs.f[logtype]) {
+		return -1;
+	}
+
+	rte_logs.t[logtype] = logtype;
+	rte_logs.f[logtype] = f;
 	return 0;
 }
 
@@ -161,6 +176,14 @@ rte_log_set_level(uint32_t type, uint32_t level)
 		return -1;
 
 	logtype_set_level(type, level);
+
+	return 0;
+}
+
+int
+rte_log_set_l(uint32_t type, uint32_t level)
+{
+	rte_logs.l[type] = level;
 
 	return 0;
 }
@@ -505,6 +528,24 @@ rte_vlog(uint32_t level, uint32_t logtype, const char *format, va_list ap)
 	return ret;
 }
 
+static int
+rte_vlog_f(uint32_t level, uint32_t logtype, const char *format, va_list ap)
+{
+	FILE *f = rte_logs.f[logtype];
+	int ret;
+
+	if (!f) {
+		return 0;
+	}
+
+	if (level > rte_logs.l[logtype])
+		return 0;
+
+	ret = vfprintf(f, format, ap);
+	fflush(f);
+	return ret;
+}
+
 /*
  * Generates a log message The message will be sent in the stream
  * defined by the previous call to rte_openlog_stream().
@@ -518,6 +559,18 @@ rte_log(uint32_t level, uint32_t logtype, const char *format, ...)
 
 	va_start(ap, format);
 	ret = rte_vlog(level, logtype, format, ap);
+	va_end(ap);
+	return ret;
+}
+
+int
+rte_log_f(uint32_t level, uint32_t logtype, const char *format, ...)
+{
+	va_list ap;
+	int ret;
+
+	va_start(ap, format);
+	ret = rte_vlog_f(level, logtype, format, ap);
 	va_end(ap);
 	return ret;
 }

@@ -88,6 +88,9 @@ extern "C" {
  */
 int rte_openlog_stream(FILE *f);
 
+/* multi log stream support */
+int rte_log_init(FILE *f, uint32_t logtype);
+
 /**
  * Retrieve the stream used by the logging system (see rte_openlog_stream()
  * to change it).
@@ -174,6 +177,9 @@ int rte_log_set_level_regexp(const char *regex, uint32_t level);
  *   0 on success, a negative value if logtype or level is invalid.
  */
 int rte_log_set_level(uint32_t logtype, uint32_t level);
+
+/* multi log stream support */
+int rte_log_set_l(uint32_t logtype, uint32_t level);
 
 /**
  * Get the current loglevel for the message being processed.
@@ -289,6 +295,15 @@ int rte_log(uint32_t level, uint32_t logtype, const char *format, ...)
 #endif
 #endif
 	__rte_format_printf(3, 4);
+
+/* multi log stream support */
+int rte_log_f(uint32_t level, uint32_t logtype, const char *format, ...)
+#ifdef __GNUC__
+#if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ > 2))
+    __rte_cold
+#endif
+#endif
+    __rte_format_printf(3, 4);
 
 /**
  * Generates a log message.

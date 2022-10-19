@@ -18,6 +18,7 @@ apps = [
         'test-pmd',
         'test-regex',
         'test-sad',
+        'firewall',
 ]
 
 default_cflags = machine_args + ['-DALLOW_EXPERIMENTAL_API']
@@ -33,6 +34,11 @@ foreach app:apps
     includes = []
     cflags = default_cflags
     ldflags = default_ldflags
+
+    if name == 'firewall'
+        cflags += ['-T module_section.lds']
+    endif
+
     objs = [] # other object files to link against, used e.g. for
               # instruction-set optimized versions of code
 
