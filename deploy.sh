@@ -14,7 +14,7 @@ then
 	echo "--------------------NICs--------------------"
 	ip link
 	echo "--------------------PCIs--------------------"
-	python ${TOOL_PATH}/dpdk-devbind.py -s | grep '0000'
+	python3 ${TOOL_PATH}/dpdk-devbind.py -s | grep '0000'
 	exit
 fi
 
@@ -32,5 +32,5 @@ sudo insmod ${KMOD_INSTALL_PATH}/igb_uio.ko 2> /dev/null
 # bind nic
 ip link set dev $NIC1 down
 ip link set dev $NIC2 down
-python ${TOOL_PATH}/dpdk-devbind.py -b igb_uio $NIC1 $NIC2
-python ${TOOL_PATH}/dpdk-devbind.py -s | grep 'drv=igb_uio'
+python3 ${TOOL_PATH}/dpdk-devbind.py -b igb_uio $NIC1 $NIC2
+python3 ${TOOL_PATH}/dpdk-devbind.py -s | grep 'drv=igb_uio'
