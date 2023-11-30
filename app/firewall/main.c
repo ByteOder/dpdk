@@ -13,6 +13,7 @@
 #include <rte_ethdev.h>
 
 #include "module.h"
+#include "interface/interface.h"
 
 volatile bool force_quit;
 
@@ -30,9 +31,12 @@ static int
 main_loop(__rte_unused void *arg)
 {
     unsigned lcore_id = rte_lcore_id();
+    struct rte_mbuf *m = NULL;
 
     while (!force_quit) {
         printf("lcore %u, this is main loop, over!\n", lcore_id);
+        modules_proc(m, MOD_HOOK_RECV);
+        modules_proc(m, MOD_HOOK_SEND);
         sleep(5);
     }
 

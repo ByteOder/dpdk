@@ -21,11 +21,13 @@
  * module hook. 
  */
 typedef enum {
+    MOD_HOOK_RECV,
     MOD_HOOK_PREROUTING,
     MOD_HOOK_FORWARD,
     MOD_HOOK_POSTROUTING,
     MOD_HOOK_LOCALIN,
     MOD_HOOK_LOCALOUT,
+    MOD_HOOK_SEND,
 } mod_hook_t;
 
 
@@ -91,7 +93,7 @@ do { \
  * */
 int modules_load(void);
 int modules_init(void *config);
-int modules_proc(struct rte_mbuf *pkt, mod_ret_t hook);
+int modules_proc(struct rte_mbuf *pkt, mod_hook_t hook);
 
 #endif
 

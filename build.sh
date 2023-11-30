@@ -6,10 +6,27 @@
 WORK_PATH=`pwd`
 KMOD_PATH=${WORK_PATH}/kmods/linux/igb_uio/
 KMOD_INSTALL_PATH=${WORK_PATH}/build/kmods/
+MODULE_PATH=${WORK_PATH}/module
 
 # remove cache
 rm -fr build
 mkdir build
+
+# build third-party module
+for dir in ${MODULE_PATH}/*; do
+    if [ -d "$dir" ]; then
+        cd "$dir"
+        if [ -f "build.sh" ]; then
+            chmod 777 build.sh
+            ./build.sh
+            if [ $? -ne 0 ]; then
+                echo "build terminate !"
+                exit -1
+            fi
+        fi
+    fi
+done
+cd ${WORK_PATH}
 
 # build all examples
 meson -Dexamples=all build

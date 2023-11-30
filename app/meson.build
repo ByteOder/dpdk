@@ -36,7 +36,8 @@ foreach app:apps
     ldflags = default_ldflags
 
     if name == 'firewall'
-        cflags += ['-T module_section.lds']
+        lds_script = meson.current_source_dir() + '/module_section.lds' 
+        ldflags += ['-T', lds_script]
     endif
 
     objs = [] # other object files to link against, used e.g. for

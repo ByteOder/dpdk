@@ -7,8 +7,12 @@
 # DPDK instance, use 'make'
 
 allow_experimental_apis = true
+
 deps += ['hash', 'lpm', 'fib', 'eventdev', 'cmdline']
 sources = files(
         'main.c',
         'module.c',
+
+        # interface
+        'interface/interface.c',
 )
