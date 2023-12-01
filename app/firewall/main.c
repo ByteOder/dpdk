@@ -30,13 +30,22 @@ signal_handler(int signum)
 static int
 main_loop(__rte_unused void *arg)
 {
-    unsigned lcore_id = rte_lcore_id();
-    struct rte_mbuf *m = NULL;
+    int lcore_id = rte_lcore_id();
+    int lcore_rtx = *(int *)arg;
 
     while (!force_quit) {
-        printf("lcore %u, this is main loop, over!\n", lcore_id);
-        modules_proc(m, MOD_HOOK_RECV);
-        modules_proc(m, MOD_HOOK_SEND);
+        printf("lcore %u is running, over!\n", lcore_id);
+        
+        if (lcore_rtx != -1) {
+            if (lcore_rtx == lcore_id) {
+                printf("RTX\n");
+            } else {
+                printf("WKR\n");
+            }
+        } else {
+            printf("RTX_WKR\n");
+        }
+
         sleep(5);
     }
 
@@ -45,13 +54,13 @@ main_loop(__rte_unused void *arg)
 
 int main(int argc, char **argv)
 {
+    int lcore_id;
+    int lcore_rtx = -1;
+    int lcore_mgt = -1;
     int ret = 0;
     void *config = NULL;
-    struct rte_eth_dev_info dev_info;
-    uint16_t portid;
 
-
-    printf("==== firewall version f3f3a356c82b333066156878a5ca59ae8264d132 date 2023 11 29 =====\n");
+    printf("==== firewall buid at date 2023 12 01 =====\n");
 
     /**
      * init EAL
@@ -69,19 +78,6 @@ int main(int argc, char **argv)
     force_quit = false;
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-
-    /**
-     * port info
-     * */
-    RTE_ETH_FOREACH_DEV(portid) {
-        ret = rte_eth_dev_info_get(portid, &dev_info);
-        if (ret) {
-            rte_exit(EXIT_FAILURE, "get dev info failed");
-        }
-
-        printf("device name %s driver name %s max_rx_queues %u max_tx_queues %u\n",
-            dev_info.device->name, dev_info.driver_name, dev_info.max_rx_queues, dev_info.max_tx_queues);
-    }
 
     /**
      * load modules
@@ -102,7 +98,29 @@ int main(int argc, char **argv)
         rte_exit(EXIT_FAILURE, "need 2 lcores at least\n");
     }
 
-    rte_eal_mp_remote_launch(main_loop, NULL, SKIP_MAIN);
+    lcore_mgt = rte_get_main_lcore();
+    printf("mgt-core: %d\n", lcore_mgt);
+
+    RTE_LCORE_FOREACH(lcore_id) {
+        if (lcores == 2) {
+            if (lcore_id != lcore_mgt) {
+                printf("wkr-core: %d\n", lcore_id);
+            }
+        }
+
+        if (lcores > 2) {
+            if (lcore_id != lcore_mgt) {
+                if (lcore_rtx == -1) {
+                    lcore_rtx = lcore_id;
+                    printf("rtx-core: %d\n", lcore_rtx);
+                } else {
+                    printf("wkr-core: %d\n", lcore_id);
+                }
+            }
+        }
+    }
+
+    rte_eal_mp_remote_launch(main_loop, (void *)&lcore_rtx, SKIP_MAIN);
 
     ret = 0;
 

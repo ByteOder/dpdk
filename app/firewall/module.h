@@ -55,6 +55,8 @@ typedef struct {
     const char *name;           /** module name */
     uint16_t id;                /** module id */
     bool enabled;               /** module switch */
+    bool log;                   /** log switch */
+    const char *logf;           /** log file path */
     mod_init_t init;            /** init function */
     mod_func_t proc;            /** process function */
     void *priv;                 /** private use */

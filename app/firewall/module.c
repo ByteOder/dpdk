@@ -24,13 +24,14 @@ int modules_load(void)
 
 int modules_init(void *config)
 {
-    printf("modules init\n");
+    printf("modules init ...\n");
 
     __rte_unused module_t *m;
     __rte_unused int id;
 
     MODULE_FOREACH(m, id) {
         if (m && m->init && m->enabled) {
+            printf("[%d] %s init\n", id, m->name);
             if (m->init(config)) {
                 return -1;
             }
