@@ -12,10 +12,18 @@
 #include <rte_launch.h>
 #include <rte_ethdev.h>
 
+#include "config.h"
 #include "module.h"
+#include "worker.h"
 #include "interface/interface.h"
 
 volatile bool force_quit;
+
+config_t config = {
+    .pktmbuf_pool = NULL,
+    .promiscuous = 0,
+    .worker_num = 0,
+};
 
 static void
 signal_handler(int signum)
@@ -39,11 +47,14 @@ main_loop(__rte_unused void *arg)
         if (lcore_rtx != -1) {
             if (lcore_rtx == lcore_id) {
                 printf("RTX\n");
+                RTX();
             } else {
                 printf("WKR\n");
+                WRK();
             }
         } else {
             printf("RTX_WKR\n");
+            RTX_WRK();
         }
 
         sleep(5);
@@ -58,7 +69,6 @@ int main(int argc, char **argv)
     int lcore_rtx = -1;
     int lcore_mgt = -1;
     int ret = 0;
-    void *config = NULL;
 
     printf("==== firewall buid at date 2023 12 01 =====\n");
 
@@ -80,14 +90,12 @@ int main(int argc, char **argv)
     signal(SIGTERM, signal_handler);
 
     /**
-     * load modules
+     * init mbuf pool
      * */
-    modules_load();
-
-    /**
-     * init modules
-     * */
-    modules_init(&config);
+    config.pktmbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 8192, 256, 0, 128 + 2048, rte_socket_id());
+    if (!config.pktmbuf_pool) {
+        rte_exit(EXIT_FAILURE, "create pktmbuf pool failed\n");
+    }
     
     /**
      * lcore count check, at least need 2 cores, 1 for management plane and others
@@ -104,7 +112,8 @@ int main(int argc, char **argv)
     RTE_LCORE_FOREACH(lcore_id) {
         if (lcores == 2) {
             if (lcore_id != lcore_mgt) {
-                printf("wkr-core: %d\n", lcore_id);
+                printf("rtx-wkr-core: %d\n", lcore_id);
+                config.worker_num ++;
             }
         }
 
@@ -115,10 +124,14 @@ int main(int argc, char **argv)
                     printf("rtx-core: %d\n", lcore_rtx);
                 } else {
                     printf("wkr-core: %d\n", lcore_id);
+                    config.worker_num ++;
                 }
             }
         }
     }
+
+    modules_load();
+    modules_init(&config);
 
     rte_eal_mp_remote_launch(main_loop, (void *)&lcore_rtx, SKIP_MAIN);
 
@@ -136,3 +149,6 @@ int main(int argc, char **argv)
 
     return ret;
 }
+
+// file-format utf-8
+// ident using space

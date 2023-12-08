@@ -18,7 +18,7 @@ for dir in ${MODULE_PATH}/*; do
         cd "$dir"
         if [ -f "build.sh" ]; then
             chmod 777 build.sh
-            ./build.sh
+            source ./build.sh
             if [ $? -ne 0 ]; then
                 echo "build terminate !"
                 exit -1

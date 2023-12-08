@@ -21,13 +21,13 @@
  * module hook. 
  */
 typedef enum {
-    MOD_HOOK_RECV,
+    MOD_HOOK_INGRESS,
     MOD_HOOK_PREROUTING,
     MOD_HOOK_FORWARD,
     MOD_HOOK_POSTROUTING,
     MOD_HOOK_LOCALIN,
     MOD_HOOK_LOCALOUT,
-    MOD_HOOK_SEND,
+    MOD_HOOK_EGRESS,
 } mod_hook_t;
 
 

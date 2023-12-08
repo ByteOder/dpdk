@@ -12,7 +12,9 @@ deps += ['hash', 'lpm', 'fib', 'eventdev', 'cmdline']
 sources = files(
         'main.c',
         'module.c',
+        'worker.c',
 
         # interface
         'interface/interface.c',
+        'interface/vwire.c',
 )
