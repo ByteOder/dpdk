@@ -70,7 +70,7 @@ int main(int argc, char **argv)
     int lcore_mgt = -1;
     int ret = 0;
 
-    printf("==== firewall buid at date 2023 12 01 =====\n");
+    printf("==== firewall buid at date 2023 12 12 =====\n");
 
     /**
      * init EAL

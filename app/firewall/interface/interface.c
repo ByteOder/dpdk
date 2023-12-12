@@ -6,6 +6,7 @@
 #include "../config.h"
 #include "../module.h"
 #include "interface.h"
+#include "vwire.h"
 
 interface_config_t interface_config;
 
@@ -30,7 +31,7 @@ MODULE_DECLARE(interface) = {
 };
 
 static int
-interface_json_load(void)
+interface_json_load(config_t *config)
 {
     const char *file = "interface.json";
     char f[MAX_FILE_PATH] = {0};
@@ -65,7 +66,7 @@ interface_json_load(void)
         goto done;
     }
 
-    if (json_object_object_get_ex(jr, "port", &ja) == 0) {
+    if (json_object_object_get_ex(jr, "ports", &ja) == 0) {
         printf("can't find port array in file %s\n", f);
         ret = -1;
         goto done;
@@ -114,6 +115,7 @@ interface_json_load(void)
 done:
     if (js) free(js);
     if (jr) json_object_put(jr);
+    if (ret == 0) config->interface_config = &interface_config;
     return ret;
 }
 
@@ -126,8 +128,12 @@ int interface_init(__rte_unused void* cfg)
     uint16_t nb_tx_desc = 1024;
     int ret;
 
-    if (interface_json_load()) {
+    if (interface_json_load(config)) {
         rte_exit(EXIT_FAILURE, "interface json load error");
+    }
+
+    if (vwire_init(cfg)) {
+        rte_exit(EXIT_FAILURE, "vwire init error");
     }
 
     ports = rte_eth_dev_count_avail();
@@ -229,8 +235,6 @@ int interface_init(__rte_unused void* cfg)
             }
         }
     }
-
-    config->interface_config = &interface_config;
 
     return 0;
 }
