@@ -4,7 +4,6 @@
 
 #include <stdio.h>
 #include <signal.h>
-#include <unistd.h>
 
 #include <rte_common.h>
 #include <rte_log.h>
@@ -15,6 +14,7 @@
 #include "config.h"
 #include "module.h"
 #include "worker.h"
+#include "packet.h"
 #include "interface/interface.h"
 
 volatile bool force_quit;
@@ -23,6 +23,14 @@ config_t config = {
     .pktmbuf_pool = NULL,
     .promiscuous = 0,
     .worker_num = 0,
+    .port_num = 0,
+    .mgt_core = -1,
+    .rx_core = -1,
+    .tx_core = -1,
+    .rtx_core= -1,
+    .rtx_worker_core = -1,
+    .rx_queues = {0},
+    .tx_queues = {{0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}},
 };
 
 static void
@@ -39,25 +47,14 @@ static int
 main_loop(__rte_unused void *arg)
 {
     int lcore_id = rte_lcore_id();
-    int lcore_rtx = *(int *)arg;
+    config_t *c = (config_t *)arg;
 
     while (!force_quit) {
-        printf("lcore %u is running, over!\n", lcore_id);
-        
-        if (lcore_rtx != -1) {
-            if (lcore_rtx == lcore_id) {
-                printf("RTX\n");
-                RTX();
-            } else {
-                printf("WKR\n");
-                WRK();
-            }
-        } else {
-            printf("RTX_WKR\n");
-            RTX_WRK();
-        }
-
-        sleep(5);
+        if (lcore_id == c->rx_core) RX(c);
+        else if (lcore_id == c->tx_core) TX(c);
+        else if (lcore_id == c->rtx_core) RTX(c);
+        else if (lcore_id == c->rtx_worker_core) RTX_WORKER(c);
+        else WORKER(c);
     }
 
     return 0;
@@ -66,8 +63,6 @@ main_loop(__rte_unused void *arg)
 int main(int argc, char **argv)
 {
     int lcore_id;
-    int lcore_rtx = -1;
-    int lcore_mgt = -1;
     int ret = 0;
 
     printf("==== firewall buid at date 2023 12 12 =====\n");
@@ -92,48 +87,98 @@ int main(int argc, char **argv)
     /**
      * init mbuf pool
      * */
-    config.pktmbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 8192, 256, 0, 128 + 2048, rte_socket_id());
+    config.pktmbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 8192, 256, sizeof(packet_t), 128 + 2048, rte_socket_id());
     if (!config.pktmbuf_pool) {
         rte_exit(EXIT_FAILURE, "create pktmbuf pool failed\n");
     }
     
     /**
-     * lcore count check, at least need 2 cores, 1 for management plane and others
-     * for data plane
+     * lcores check and alloc
+     * 2 = 1 mgt-core + 1 rtx-worker-core
+     * 4 = 1 mgt-core + 1 rtx-core + 2 worker-core
+     * 8 = 1 mgt-core + 1 rx-core + 1 tx-core + 5 worker-core
+     * ...
      * */
+
     unsigned int lcores = rte_lcore_count();
-    if (lcores < 2) {
-        rte_exit(EXIT_FAILURE, "need 2 lcores at least\n");
+    if (lcores < 2 || lcores > 8 || lcores % 2) {
+        rte_exit(EXIT_FAILURE, "lcores must be multiple of 2, support 2,4,8 for now\n");
     }
 
-    lcore_mgt = rte_get_main_lcore();
-    printf("mgt-core: %d\n", lcore_mgt);
+    config.mgt_core = rte_get_main_lcore();
+    printf("mgt-core: %d\n", config.mgt_core);
 
     RTE_LCORE_FOREACH(lcore_id) {
         if (lcores == 2) {
-            if (lcore_id != lcore_mgt) {
-                printf("rtx-wkr-core: %d\n", lcore_id);
+            if (lcore_id != config.mgt_core) {
+                printf("rtx-worker-core: %d\n", lcore_id);
+                config.rtx_worker_core = lcore_id;
                 config.worker_num ++;
             }
         }
 
-        if (lcores > 2) {
-            if (lcore_id != lcore_mgt) {
-                if (lcore_rtx == -1) {
-                    lcore_rtx = lcore_id;
-                    printf("rtx-core: %d\n", lcore_rtx);
+        if (lcores == 4) {
+            if (lcore_id != config.mgt_core) {
+                if (config.rtx_core == -1) {
+                    config.rtx_core = lcore_id;
+                    printf("rtx-core: %d\n", config.rtx_core);
                 } else {
-                    printf("wkr-core: %d\n", lcore_id);
+                    printf("worker-core: %d\n", lcore_id);
                     config.worker_num ++;
                 }
             }
         }
+
+        if (lcores == 8) {
+            if (lcore_id != config.mgt_core) {
+                if (config.rx_core == -1) {
+                    config.rx_core = lcore_id;
+                    printf("rx-core: %d\n", config.rx_core);
+                    continue;
+                } 
+
+                if (config.tx_core == -1) {
+                    config.tx_core = lcore_id;
+                    printf("tx-core: %d\n", config.tx_core);
+                    continue;
+                }
+
+                printf("worker-core: %d\n", lcore_id);
+                config.worker_num ++;
+            }
+        }
     }
 
-    modules_load();
-    modules_init(&config);
+    /**
+     * port check
+     * */
+    config.port_num = rte_eth_dev_count_avail();
+    if (config.port_num < 2) {
+        rte_exit(EXIT_FAILURE, "need 2 port at least");
+    }
 
-    rte_eal_mp_remote_launch(main_loop, (void *)&lcore_rtx, SKIP_MAIN);
+    /**
+     * init worker
+     * 1. create rx and tx queue for each worker
+     * */
+    ret = worker_init(&config);
+    if (ret) {
+        rte_exit(EXIT_FAILURE, "worker init erorr\n");
+    }
+
+    /**
+     * modules register and initialize
+     * */
+    modules_load();
+    ret = modules_init(&config);
+    if (ret) {
+        rte_exit(EXIT_FAILURE, "module init erorr\n");
+    }
+
+    /**
+     * start up worker main loop on each lcore, except mgt-core
+     * */
+    rte_eal_mp_remote_launch(main_loop, (void *)&config, SKIP_MAIN);
 
     ret = 0;
 

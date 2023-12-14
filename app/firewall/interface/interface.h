@@ -23,6 +23,7 @@ typedef struct {
     void *vwire_pairs;
     uint16_t port_num;
     uint16_t vwire_pair_num;
+    void *priv;
 } interface_config_t;
 
 int interface_init(__rte_unused void* cfg);

@@ -130,5 +130,28 @@ int vwire_init(__rte_unused void* cfg)
     return 0;
 }
 
+int vwire_pair(void *cfg, uint16_t port_id)
+{
+    config_t *config = cfg;
+    interface_config_t *interface_config = config->interface_config;
+    vwire_config_t *vwire_config;
+    int i;
+
+    for (i = 0; i < interface_config->vwire_pair_num; i++) {
+        vwire_config = (vwire_config_t *)interface_config->vwire_pairs + i;
+        if (vwire_config) {
+            if (port_id == vwire_config->port1) {
+                return vwire_config->port2;
+            }
+
+            if (port_id == vwire_config->port2) {
+                return vwire_config->port1;
+            }
+        }
+    }
+
+    return -1;
+}
+
 // file format utf-8
 // ident using space

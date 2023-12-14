@@ -1,10 +1,12 @@
 #include <rte_lcore.h>
 #include <rte_ethdev.h>
+#include <rte_ring.h>
 
 #include <json-c/json.h>
 
 #include "../config.h"
 #include "../module.h"
+#include "../packet.h"
 #include "interface.h"
 #include "vwire.h"
 
@@ -112,6 +114,8 @@ interface_json_load(config_t *config)
         interface_config.port_num ++;
     }
 
+    interface_config.priv = config;
+
 done:
     if (js) free(js);
     if (jr) json_object_put(jr);
@@ -123,7 +127,7 @@ int interface_init(__rte_unused void* cfg)
 {
     config_t *config = (config_t *)cfg;
     struct rte_eth_dev_info dev_info;
-    uint16_t ports, portid, rx_queues, tx_queues, i;
+    uint16_t portid, rx_queues, tx_queues, i;
     uint16_t nb_rx_desc = 1024;
     uint16_t nb_tx_desc = 1024;
     int ret;
@@ -134,11 +138,6 @@ int interface_init(__rte_unused void* cfg)
 
     if (vwire_init(cfg)) {
         rte_exit(EXIT_FAILURE, "vwire init error");
-    }
-
-    ports = rte_eth_dev_count_avail();
-    if (ports < 2) {
-        rte_exit(EXIT_FAILURE, "need 2 port at least");
     }
 
     rx_queues = tx_queues = 0;
@@ -239,16 +238,90 @@ int interface_init(__rte_unused void* cfg)
     return 0;
 }
 
-mod_ret_t interface_proc(__rte_unused struct rte_mbuf *mbuf, mod_hook_t hook)
+static int
+interface_proc_recv(void)
 {
-    printf("interface proc\n");
+    struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
+    int nb_rx, queueid;
+    uint16_t portid;
 
-    if (hook == MOD_HOOK_INGRESS) {
-        printf("recv\n");
+    config_t *config = (config_t *)interface_config.priv;
+
+    RTE_ETH_FOREACH_DEV(portid) {
+        for (queueid = 0; queueid < config->worker_num; queueid ++) {
+            nb_rx = rte_eth_rx_burst(portid, queueid, pkts_burst, MAX_PKT_BURST);
+            if (nb_rx) {
+                printf("recv %d pkts\n", nb_rx);
+                rte_ring_enqueue_bulk(config->rx_queues[queueid], (void *const *)pkts_burst, nb_rx, NULL);
+            }
+        }
     }
 
-    if (hook == MOD_HOOK_EGRESS) {
-        printf("send\n");
+    return 0;
+}
+
+static int
+interface_proc_prerouting(struct rte_mbuf *mbuf)
+{
+    packet_t *p = rte_mbuf_to_priv(mbuf);
+    config_t *config = interface_config.priv;
+    uint16_t portid;
+
+    if (!p) {
+        rte_pktmbuf_free(mbuf);
+        return -1;
+    }
+
+    portid = p->in_port;
+    switch (interface_config.ports[portid].type) {
+        case PORT_TYPE_VWIRE:
+            p->out_port = vwire_pair(config, portid);
+            break;
+        default:
+            break;
+    }
+
+    return 0;
+}
+
+static int
+interface_proc_send(void)
+{
+    struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
+    int nb_tx, tx, portid, queueid;
+
+    config_t *config = (config_t *)interface_config.priv;
+
+    for (portid = 0; portid < config->port_num; portid ++) {
+        for (queueid = 0; queueid < config->worker_num; queueid ++) {
+            nb_tx = rte_ring_dequeue_bulk(config->tx_queues[portid][queueid], (void **)pkts_burst, MAX_PKT_BURST, NULL);
+            if (nb_tx) {
+                tx = rte_eth_tx_burst(portid, queueid, pkts_burst, nb_tx);
+                printf("send %d pkts\n", tx);
+
+                if (tx < nb_tx) {
+                    printf("send failed %d pkts\n", nb_tx - tx);
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+
+mod_ret_t interface_proc(__rte_unused struct rte_mbuf *mbuf, mod_hook_t hook)
+{
+    if (hook == MOD_HOOK_RECV) {
+        interface_proc_recv();
+    }
+
+    if (hook == MOD_HOOK_PREROUTING) {
+        interface_proc_prerouting(mbuf);
+    }
+
+    if (hook == MOD_HOOK_SEND) {
+        interface_proc_send();
     }
 
     return MOD_RET_ACCEPT;

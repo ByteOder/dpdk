@@ -11,8 +11,6 @@ int max_module_id = -1;
 
 int modules_load(void)
 {
-    printf("modules load\n");
-
     module_t *m;
 
     for (m = &__module_start__; m < &__module_end__; m ++) {
@@ -24,8 +22,6 @@ int modules_load(void)
 
 int modules_init(void *config)
 {
-    printf("modules init ...\n");
-
     __rte_unused module_t *m;
     __rte_unused int id;
 
@@ -43,8 +39,6 @@ int modules_init(void *config)
 
 int modules_proc(struct rte_mbuf *pkt, mod_hook_t hook)
 {
-    printf("modules proc\n");
-
     module_t *m;
     int id;
     mod_ret_t ret;
