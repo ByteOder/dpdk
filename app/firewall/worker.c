@@ -26,7 +26,7 @@
 
 int worker_init(config_t *config)
 {
-    printf("WORKER init ...\n");
+    printf("worker init ...\n");
     char qname[128];
     int i, j;
     
@@ -111,7 +111,7 @@ int WORKER(config_t *config)
     packet_t *p;
     int ret, hook, portid, queueid;
 
-    queueid = rte_lcore_id() / config->worker_num;
+    queueid = rte_lcore_id() % config->worker_num;
     ret = rte_ring_dequeue(config->rx_queues[queueid], (void **)&mbuf);
     if (ret || !mbuf) {
         return 0;
