@@ -242,7 +242,8 @@ static int
 interface_proc_recv(void)
 {
     struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
-    int nb_rx, queueid;
+    packet_t *p;
+    int i, nb_rx, queueid;
     uint16_t portid;
 
     config_t *config = (config_t *)interface_config.priv;
@@ -251,8 +252,17 @@ interface_proc_recv(void)
         for (queueid = 0; queueid < config->worker_num; queueid ++) {
             nb_rx = rte_eth_rx_burst(portid, queueid, pkts_burst, MAX_PKT_BURST);
             if (nb_rx) {
-                printf("recv %d pkts\n", nb_rx);
-                rte_ring_enqueue_bulk(config->rx_queues[queueid], (void *const *)pkts_burst, nb_rx, NULL);
+                for (i = 0; i < nb_rx; i++) {
+                    p = rte_mbuf_to_priv(pkts_burst[i]);
+                    if (p) {
+                        p->in_port = portid;
+                    }
+                }
+
+                /**
+                 * enqueue must sucess.
+                 * */
+                while (!rte_ring_enqueue_bulk(config->rx_queues[queueid], (void *const *)pkts_burst, nb_rx, NULL)) {;};
             }
         }
     }
@@ -294,11 +304,15 @@ interface_proc_send(void)
 
     for (portid = 0; portid < config->port_num; portid ++) {
         for (queueid = 0; queueid < config->worker_num; queueid ++) {
-            nb_tx = rte_ring_dequeue_bulk(config->tx_queues[portid][queueid], (void **)pkts_burst, MAX_PKT_BURST, NULL);
+            nb_tx = rte_ring_count(config->tx_queues[portid][queueid]);
+            if (!nb_tx) {
+                continue;
+            }
+
+            nb_tx = nb_tx > MAX_PKT_BURST ? MAX_PKT_BURST : nb_tx;
+            nb_tx = rte_ring_dequeue_bulk(config->tx_queues[portid][queueid], (void **)pkts_burst, nb_tx, NULL);
             if (nb_tx) {
                 tx = rte_eth_tx_burst(portid, queueid, pkts_burst, nb_tx);
-                printf("send %d pkts\n", tx);
-
                 if (tx < nb_tx) {
                     printf("send failed %d pkts\n", nb_tx - tx);
                 }

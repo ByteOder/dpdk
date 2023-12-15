@@ -21,7 +21,7 @@ volatile bool force_quit;
 
 config_t config = {
     .pktmbuf_pool = NULL,
-    .promiscuous = 0,
+    .promiscuous = 1,
     .worker_num = 0,
     .port_num = 0,
     .mgt_core = -1,
@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     int lcore_id;
     int ret = 0;
 
-    printf("==== firewall buid at date 2023 12 12 =====\n");
+    printf("==== firewall built at 2023 12 15 =====\n");
 
     /**
      * init EAL

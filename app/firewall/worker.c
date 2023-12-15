@@ -18,7 +18,7 @@
  * port1           >----->----> queue1----v
  *   v---queue2----+--------v          >--+--> port1-queue2
  *                 |        |          |  |
- *   ^---quque1----^        |          |  v--> port2-queue1
+ *   ^---queue1----^        |          |  v--> port2-queue1
  * port2                    >-> queue2-|
  *   v---queue2-------------^          >-----> port2-queue2
  * ...
@@ -41,7 +41,7 @@ int worker_init(config_t *config)
     }
 
     for (i = 0; i < config->port_num; i++) {
-        for (j = 0; j < config->worker_num; j++) { // worker num equal to queue num
+        for (j = 0; j < config->worker_num; j++) {
             memset(qname, 0, 128);
             sprintf(qname, "%s-%d-%d", "worker-tx-queue", i, j);
 
@@ -73,7 +73,7 @@ error:
 }
 
 /** 
- * recv and push pkts to worker's rx queue 
+ * recv pkts then push to worker's rx queue 
  * */
 int RX(__rte_unused config_t *config)
 {
@@ -101,7 +101,7 @@ int RTX(config_t *config)
 }
 
 /**
- * 1、 pop a mbuf from worker's rx queue
+ * 1、 pop mbuf from worker's rx queue
  * 2、 handle the mbuf
  * 3、 push the handled mbuf to worker's tx queue
  * */
@@ -125,8 +125,8 @@ int WORKER(config_t *config)
         rte_pktmbuf_free(mbuf);
         return -1;
     }
-
     portid = p->out_port;
+
     ret = rte_ring_enqueue(config->tx_queues[portid][queueid], mbuf);
     if (ret) {
         rte_pktmbuf_free(mbuf);
