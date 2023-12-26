@@ -117,15 +117,18 @@ int WORKER(config_t *config)
         return 0;
     }
 
-    for (hook = MOD_HOOK_INGRESS; hook <= MOD_HOOK_EGRESS; hook ++)
-        modules_proc(mbuf, hook);
+    for (hook = MOD_HOOK_INGRESS; hook <= MOD_HOOK_EGRESS; hook ++) {
+        if (modules_proc(mbuf, hook)) {
+            return 0;
+        }
+    }
 
     p = rte_mbuf_to_priv(mbuf);
     if (!p) {
         rte_pktmbuf_free(mbuf);
         return -1;
     }
-    portid = p->out_port;
+    portid = p->oport;
 
     ret = rte_ring_enqueue(config->tx_queues[portid][queueid], mbuf);
     if (ret) {

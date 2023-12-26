@@ -1,6 +1,7 @@
 #include <rte_lcore.h>
 #include <rte_ethdev.h>
 #include <rte_ring.h>
+#include <rte_log.h>
 
 #include <json-c/json.h>
 
@@ -23,10 +24,10 @@ struct rte_eth_conf g_port_conf = {
 
 MODULE_DECLARE(interface) = {
     .name = "interface",
-    .id = 1,
+    .id = MOD_ID_INTERFACE,
     .enabled = true,
-    .log = false,
-    .logf = NULL,
+    .log = true,
+    .logf = "/opt/firewall/log/interface.log",
     .init = interface_init,
     .proc = interface_proc,
     .priv = NULL
@@ -131,6 +132,12 @@ int interface_init(__rte_unused void* cfg)
     uint16_t nb_rx_desc = 1024;
     uint16_t nb_tx_desc = 1024;
     int ret;
+
+    if (interface.log) {
+        if (rte_log_init(interface.logf, MOD_ID_INTERFACE, RTE_LOG_ERR)) {
+            rte_exit(EXIT_FAILURE, "interface init rte log error");
+        }
+    }
 
     if (interface_json_load(config)) {
         rte_exit(EXIT_FAILURE, "interface json load error");
@@ -243,8 +250,7 @@ interface_proc_recv(void)
 {
     struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
     packet_t *p;
-    int i, nb_rx, queueid;
-    uint16_t portid;
+    int i, nb_rx, portid, queueid;
 
     config_t *config = (config_t *)interface_config.priv;
 
@@ -252,10 +258,12 @@ interface_proc_recv(void)
         for (queueid = 0; queueid < config->worker_num; queueid ++) {
             nb_rx = rte_eth_rx_burst(portid, queueid, pkts_burst, MAX_PKT_BURST);
             if (nb_rx) {
+                rte_log_f(RTE_LOG_DEBUG, MOD_ID_INTERFACE, "\nrecv %d pkt from %d-%d\n", nb_rx, portid, queueid);
+
                 for (i = 0; i < nb_rx; i++) {
                     p = rte_mbuf_to_priv(pkts_burst[i]);
                     if (p) {
-                        p->in_port = portid;
+                        p->iport = portid;
                     }
                 }
 
@@ -263,6 +271,7 @@ interface_proc_recv(void)
                  * enqueue must sucess.
                  * */
                 while (!rte_ring_enqueue_bulk(config->rx_queues[queueid], (void *const *)pkts_burst, nb_rx, NULL)) {;};
+                rte_log_f(RTE_LOG_DEBUG, MOD_ID_INTERFACE, "enqueue worker rx queue %d\n", queueid);
             }
         }
     }
@@ -278,14 +287,15 @@ interface_proc_prerouting(struct rte_mbuf *mbuf)
     uint16_t portid;
 
     if (!p) {
+        rte_log_f(RTE_LOG_ERR, MOD_ID_INTERFACE, "drop pkt which priv data is null\n");
         rte_pktmbuf_free(mbuf);
         return -1;
     }
 
-    portid = p->in_port;
+    portid = p->iport;
     switch (interface_config.ports[portid].type) {
         case PORT_TYPE_VWIRE:
-            p->out_port = vwire_pair(config, portid);
+            p->oport = vwire_pair(config, portid);
             break;
         default:
             break;
@@ -312,10 +322,12 @@ interface_proc_send(void)
             nb_tx = nb_tx > MAX_PKT_BURST ? MAX_PKT_BURST : nb_tx;
             nb_tx = rte_ring_dequeue_bulk(config->tx_queues[portid][queueid], (void **)pkts_burst, nb_tx, NULL);
             if (nb_tx) {
+                rte_log_f(RTE_LOG_DEBUG, MOD_ID_INTERFACE, "dequeue %d pkt from worker tx queue %d-%d\n", nb_tx, portid, queueid);
                 tx = rte_eth_tx_burst(portid, queueid, pkts_burst, nb_tx);
                 if (tx < nb_tx) {
-                    printf("send failed %d pkts\n", nb_tx - tx);
+                    rte_log_f(RTE_LOG_ERR, MOD_ID_INTERFACE, "send failed %d pkts\n", nb_tx - tx);
                 }
+                rte_log_f(RTE_LOG_DEBUG, MOD_ID_INTERFACE, "send %d pkt to %d-%d\n", tx, portid, queueid);
             }
         }
     }

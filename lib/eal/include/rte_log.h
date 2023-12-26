@@ -89,7 +89,7 @@ extern "C" {
 int rte_openlog_stream(FILE *f);
 
 /* multi log stream support */
-int rte_log_init(FILE *f, uint32_t logtype);
+int rte_log_init(const char *logpath, uint32_t logtype, uint32_t level);
 
 /**
  * Retrieve the stream used by the logging system (see rte_openlog_stream()

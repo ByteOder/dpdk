@@ -82,14 +82,22 @@ rte_openlog_stream(FILE *f)
 }
 
 int
-rte_log_init(FILE *f, uint32_t logtype)
+rte_log_init(const char *logpath, uint32_t logtype, uint32_t level)
 {
+	FILE *f = fopen(logpath, "w+");
+	if (!f) {
+		return -1;
+	}
+
 	if (rte_logs.f[logtype]) {
 		return -1;
 	}
 
 	rte_logs.t[logtype] = logtype;
 	rte_logs.f[logtype] = f;
+
+	rte_log_set_l(logtype, level);
+
 	return 0;
 }
 

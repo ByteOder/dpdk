@@ -6,10 +6,27 @@
 /** 
  * assure packet_t 8 bytes aligned
  * */
+#pragma pack(1)
+
 typedef struct {
-	uint16_t in_port;
-	uint16_t out_port;
-	uint8_t reserved[124];
+    uint16_t iport;
+    uint16_t oport;
+    uint32_t ptype;
+    uint32_t flags;
+
+    struct {
+        uint16_t l2_len;
+        uint16_t l3_len;
+        uint16_t l4_len;
+        uint16_t tunnel_len;
+        uint16_t inner_l2_len;
+        uint16_t inner_l3_len;
+        uint16_t inner_l4_len;
+    };
+
+    uint8_t reserved[102];
 } packet_t;
+
+#pragma pack()
 
 #endif

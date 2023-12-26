@@ -12,7 +12,6 @@
 #define CONFIG_PATH "/opt/firewall/config"
 #define BINARY_PATH "/opt/firewall/bin"
 #define SCRIPT_PATH "/opt/firewall/script"
-#define LOG_PATH    "/opt/firewall/log"
 
 typedef struct {
     struct rte_mempool *pktmbuf_pool;

@@ -45,18 +45,15 @@ int modules_proc(struct rte_mbuf *pkt, mod_hook_t hook)
 {
     module_t *m;
     int id;
-    mod_ret_t ret;
 
     MODULE_FOREACH(m, id) {
+        mod_ret_t ret;
+
         if (m && m->proc && m->enabled) {
             ret = m->proc(pkt, hook);
 
             if (ret == MOD_RET_STOLEN) {
-                break;
-            }
-
-            if (ret == MOD_RET_DROP) {
-                continue;
+                return ret;
             }
 
             if (ret == MOD_RET_ACCEPT) {
@@ -65,7 +62,7 @@ int modules_proc(struct rte_mbuf *pkt, mod_hook_t hook)
         }
     }
 
-    return 0;
+    return MOD_RET_ACCEPT;
 }
 
 // file-format: utf-8

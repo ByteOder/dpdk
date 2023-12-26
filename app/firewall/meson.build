@@ -17,4 +17,7 @@ sources = files(
         # interface
         'interface/interface.c',
         'interface/vwire.c',
+
+        # decode
+        'decoder/decoder.c',
 )

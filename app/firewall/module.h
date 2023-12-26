@@ -18,6 +18,16 @@
 
 
 /**
+ * module id
+ * */
+typedef enum {
+    MOD_ID_NONE,
+    MOD_ID_INTERFACE,
+    MOD_ID_DECODER,
+} mod_id_t;
+
+
+/**
  * module hook. 
  */
 typedef enum {
@@ -38,7 +48,6 @@ typedef enum {
  */
 typedef enum {
     MOD_RET_ACCEPT,
-    MOD_RET_DROP,
     MOD_RET_STOLEN,
 } mod_ret_t;
 
@@ -53,6 +62,8 @@ typedef int (*mod_init_t)(__rte_unused void* cfg);
 /**
  * module struct.
  */
+#pragma pack(1)
+
 typedef struct {
     const char *name;           /** module name */
     uint16_t id;                /** module id */
@@ -62,8 +73,10 @@ typedef struct {
     mod_init_t init;            /** init function */
     mod_func_t proc;            /** process function */
     void *priv;                 /** private use */
+    char reserved[20];          /** reserved */
 } module_t;
 
+#pragma pack()
 
 /**
  * module array. 
