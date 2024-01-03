@@ -447,6 +447,27 @@ acl_add_rules(struct rte_acl_ctx *ctx, const void *rules, uint32_t num)
 	return 0;
 }
 
+void *
+rte_acl_rule_data(struct rte_acl_ctx *ctx, uint32_t rule_id)
+{
+	struct rte_acl_rule *rule;
+
+	if (!rule_id) {
+		return NULL;
+	}
+
+	if (rule_id > ctx->num_rules) {
+		return NULL;
+	}
+
+	rule = (struct rte_acl_rule *)((uint8_t *)ctx->rules + ctx->rule_sz * (rule_id - 1));
+	if (!rule) {
+		return NULL;
+	}
+
+	return &rule->data;
+}
+
 static int
 acl_check_rule(const struct rte_acl_rule_data *rd)
 {

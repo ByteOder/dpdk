@@ -70,6 +70,7 @@ ptype_l4(uint8_t proto)
         [IPPROTO_UDP] = RTE_PTYPE_L4_UDP,
         [IPPROTO_TCP] = RTE_PTYPE_L4_TCP,
         [IPPROTO_SCTP] = RTE_PTYPE_L4_SCTP,
+        [IPPROTO_ICMP] = RTE_PTYPE_L4_ICMP,
     };
 
     return ptype_l4_proto[proto];
@@ -219,9 +220,11 @@ decoder_proc_ingress(struct rte_mbuf *m)
         goto error;
     }
 
+    rte_ether_addr_copy(&eh->dst_addr, (struct rte_ether_addr *)p->dmac);
+    rte_ether_addr_copy(&eh->src_addr, (struct rte_ether_addr *)p->smac);
+
     proto = eh->ether_type;
     offset = sizeof(*eh);
-    p->l2_len = offset;
 
     if (proto == rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4))
         goto L3;
@@ -243,7 +246,6 @@ decoder_proc_ingress(struct rte_mbuf *m)
         }
 
         offset += sizeof(*vh);
-        p->l2_len += sizeof(*vh);
         proto = vh->eth_proto;
     } else if (proto == rte_cpu_to_be_16(RTE_ETHER_TYPE_QINQ)) {
         const struct rte_vlan_hdr *vh;
@@ -262,7 +264,6 @@ decoder_proc_ingress(struct rte_mbuf *m)
         }
 
         offset += 2 * sizeof(*vh);
-        p->l2_len += 2 * sizeof(*vh);
         proto = vh->eth_proto;
     } else if ((proto == rte_cpu_to_be_16(RTE_ETHER_TYPE_MPLS)) ||
         (proto == rte_cpu_to_be_16(RTE_ETHER_TYPE_MPLSM))) {
@@ -288,7 +289,6 @@ decoder_proc_ingress(struct rte_mbuf *m)
         }
 
         pkt_type = RTE_PTYPE_L2_ETHER_MPLS;
-        p->l2_len += (sizeof(*mh) * i);
         goto done;
     }
 
@@ -307,14 +307,17 @@ L3:
             goto error;
         }
 
+        p->tuple.v4.proto = ip4h->next_proto_id;
+        p->tuple.v4.sip = ip4h->src_addr;
+        p->tuple.v4.dip = ip4h->dst_addr;
+        p->is_v4 = true;
+
         pkt_type |= ptype_l3_ip(ip4h->version_ihl);
-        p->l3_len = rte_ipv4_hdr_len(ip4h);
-        offset += p->l3_len;
+        offset += rte_ipv4_hdr_len(ip4h);
 
         if (ip4h->fragment_offset & rte_cpu_to_be_16(
                 RTE_IPV4_HDR_OFFSET_MASK | RTE_IPV4_HDR_MF_FLAG)) {
             pkt_type |= RTE_PTYPE_L4_FRAG;
-            p->l4_len = 0;
             goto done;
         }
         proto = ip4h->next_proto_id;
@@ -334,9 +337,13 @@ L3:
             goto error;
         }
 
+        p->tuple.v6.proto = ip6h->proto;
+        memcpy(p->tuple.v6.sip, ip6h->src_addr, 16);
+        memcpy(p->tuple.v6.dip, ip6h->dst_addr, 16);
+        p->is_v4 = false;
+
         proto = ip6h->proto;
-        p->l3_len = sizeof(*ip6h);
-        offset += p->l3_len;
+        offset += sizeof(*ip6h);
         pkt_type |= ptype_l3_ip6(proto);
         
         if ((pkt_type & RTE_PTYPE_L3_MASK) == RTE_PTYPE_L3_IPV6_EXT) {
@@ -346,7 +353,6 @@ L3:
                 goto error;
             }
             proto = ret;
-            p->l3_len = offset - p->l2_len;
         }
 
         if (proto == 0) {
@@ -355,7 +361,6 @@ L3:
 
         if (frag) {
             pkt_type |= RTE_PTYPE_L4_FRAG;
-            p->l4_len = 0;
             goto done;
         }
         pkt_type |= ptype_l4(proto);
@@ -363,7 +368,27 @@ L3:
 
 // L4:
     if ((pkt_type & RTE_PTYPE_L4_MASK) == RTE_PTYPE_L4_UDP) {
-        p->l4_len = sizeof(struct rte_udp_hdr);
+        const struct rte_udp_hdr *uh;
+
+        if (unlikely(rte_pktmbuf_data_len(m) - offset < sizeof(*uh))) {
+            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            goto error;
+        }
+
+        uh = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr *, offset);
+        if (unlikely(uh == NULL)) {
+            pkt_type = pkt_type & (RTE_PTYPE_L2_MASK | RTE_PTYPE_L3_MASK);
+            goto done;
+        }
+
+        if (p->is_v4) {
+            p->tuple.v4.sp = uh->src_port;
+            p->tuple.v4.dp = uh->dst_port;
+        } else {
+            p->tuple.v6.sp = uh->src_port;
+            p->tuple.v6.dp = uh->dst_port;
+        }
+
         goto done;
     } else if ((pkt_type & RTE_PTYPE_L4_MASK) == RTE_PTYPE_L4_TCP) {
         const struct rte_tcp_hdr *th;
@@ -375,24 +400,57 @@ L3:
 
         th = rte_pktmbuf_mtod_offset(m, struct rte_tcp_hdr *, offset);
         if (unlikely(th == NULL)) {
-            pkt_type =  pkt_type & (RTE_PTYPE_L2_MASK | RTE_PTYPE_L3_MASK);
+            pkt_type = pkt_type & (RTE_PTYPE_L2_MASK | RTE_PTYPE_L3_MASK);
             goto done;
         }
-        p->l4_len = (th->data_off & 0xf0) >> 2;
+
+        if (p->is_v4) {
+            p->tuple.v4.sp = th->src_port;
+            p->tuple.v4.dp = th->dst_port;
+        } else {
+            p->tuple.v6.sp = th->src_port;
+            p->tuple.v6.dp = th->dst_port;
+        }
+
         goto done;
     } else if ((pkt_type & RTE_PTYPE_L4_MASK) == RTE_PTYPE_L4_SCTP) {
-        p->l4_len = sizeof(struct rte_sctp_hdr);
+        const struct rte_sctp_hdr *sh;
+
+        if (unlikely(rte_pktmbuf_data_len(m) - offset < sizeof(*sh))) {
+            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            goto error;
+        }
+
+        sh = rte_pktmbuf_mtod_offset(m, struct rte_sctp_hdr *, offset);
+        if (unlikely(sh == NULL)) {
+            pkt_type = pkt_type & (RTE_PTYPE_L2_MASK | RTE_PTYPE_L3_MASK);
+            goto done;
+        }
+
+        if (p->is_v4) {
+            p->tuple.v4.sp = sh->src_port;
+            p->tuple.v4.dp = sh->dst_port;
+        } else {
+            p->tuple.v6.sp = sh->src_port;
+            p->tuple.v6.dp = sh->dst_port;
+        }
+
+        goto done;
+    } else if ((pkt_type & RTE_PTYPE_L4_MASK) == RTE_PTYPE_L4_ICMP) {
+        if (p->is_v4) {
+            p->tuple.v4.sp = 0;
+            p->tuple.v4.dp = 0;
+        } else {
+            p->tuple.v6.sp = 0;
+            p->tuple.v6.dp = 0;
+        }
+
         goto done;
     } else {
-        uint32_t prev_off = offset;
-
-        p->l4_len = 0;
         pkt_type |= ptype_tunnel(&proto, m, &offset);
-        p->tunnel_len = offset - prev_off;
     }
 
 // INNER_L2:
-    p->inner_l2_len = 0;
     if (proto == rte_cpu_to_be_16(RTE_ETHER_TYPE_TEB)) {
         if (unlikely(rte_pktmbuf_data_len(m) - offset < sizeof(*eh))) {
             rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
@@ -405,10 +463,12 @@ L3:
             goto error;
         }
 
+        rte_ether_addr_copy(&eh->dst_addr, (struct rte_ether_addr *)p->dmac);
+        rte_ether_addr_copy(&eh->src_addr, (struct rte_ether_addr *)p->smac);
+
         pkt_type |= RTE_PTYPE_INNER_L2_ETHER;
         proto = eh->ether_type;
         offset += sizeof(*eh);
-        p->inner_l2_len = sizeof(*eh);
     }
 
     if (proto == rte_cpu_to_be_16(RTE_ETHER_TYPE_VLAN)) {
@@ -429,7 +489,6 @@ L3:
         }
 
         offset += sizeof(*vh);
-        p->inner_l2_len += sizeof(*vh);
         proto = vh->eth_proto;
     } else if (proto == rte_cpu_to_be_16(RTE_ETHER_TYPE_QINQ)) {
         const struct rte_vlan_hdr *vh;
@@ -449,7 +508,6 @@ L3:
         }
 
         offset += 2 * sizeof(*vh);
-        p->inner_l2_len += 2 * sizeof(*vh);
         proto = vh->eth_proto;
     }
 
@@ -468,14 +526,17 @@ L3:
             goto error;
         }
 
+        p->tuple.v4.proto = ip4h->next_proto_id;
+        p->tuple.v4.sip = ip4h->src_addr;
+        p->tuple.v4.dip = ip4h->dst_addr;
+        p->is_v4 = true;
+
         pkt_type |= ptype_inner_l3_ip(ip4h->version_ihl);
-        p->inner_l3_len = rte_ipv4_hdr_len(ip4h);
-        offset += p->inner_l3_len;
+        offset += rte_ipv4_hdr_len(ip4h);
 
         if (ip4h->fragment_offset &
                 rte_cpu_to_be_16(RTE_IPV4_HDR_OFFSET_MASK | RTE_IPV4_HDR_MF_FLAG)) {
             pkt_type |= RTE_PTYPE_INNER_L4_FRAG;
-            p->inner_l4_len = 0;
             goto done;
         }
         proto = ip4h->next_proto_id;
@@ -495,21 +556,22 @@ L3:
             goto error;
         }
 
+        p->tuple.v6.proto = ip6h->proto;
+        memcpy(p->tuple.v6.sip, ip6h->src_addr, 16);
+        memcpy(p->tuple.v6.dip, ip6h->dst_addr, 16);
+        p->is_v4 = false;
+
         proto = ip6h->proto;
-        p->inner_l3_len = sizeof(*ip6h);
-        offset += p->inner_l3_len;
+        offset += sizeof(*ip6h);
         pkt_type |= ptype_inner_l3_ip6(proto);
 
         if ((pkt_type & RTE_PTYPE_INNER_L3_MASK) == RTE_PTYPE_INNER_L3_IPV6_EXT) {
-            uint32_t prev_off;
-            prev_off = offset;
             ret = rte_net_skip_ip6_ext(proto, m, &offset, &frag);
             if (ret < 0) {
                 rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "skip ipv6 extensions failed\n");
                 goto error;
             }
             proto = ret;
-            p->inner_l3_len += offset - prev_off;
         }
 
         if (proto == 0) {
@@ -518,7 +580,6 @@ L3:
 
         if (frag) {
             pkt_type |= RTE_PTYPE_INNER_L4_FRAG;
-            p->inner_l4_len = 0;
             goto done;
         }
         pkt_type |= ptype_inner_l4(proto);
@@ -526,7 +587,28 @@ L3:
 
 // INNER_L4:
     if ((pkt_type & RTE_PTYPE_INNER_L4_MASK) == RTE_PTYPE_INNER_L4_UDP) {
-        p->inner_l4_len = sizeof(struct rte_udp_hdr);
+        const struct rte_udp_hdr *uh;
+
+        if (unlikely(rte_pktmbuf_data_len(m) - offset < sizeof(*uh))) {
+            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            goto error;
+        }
+
+        uh = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr *, offset);
+        if (unlikely(uh == NULL)) {
+            pkt_type = pkt_type & (RTE_PTYPE_L2_MASK | RTE_PTYPE_L3_MASK);
+            goto done;
+        }
+
+        if (p->is_v4) {
+            p->tuple.v4.sp = uh->src_port;
+            p->tuple.v4.dp = uh->dst_port;
+        } else {
+            p->tuple.v6.sp = uh->src_port;
+            p->tuple.v6.dp = uh->dst_port;
+        }
+
+        goto done;
     } else if ((pkt_type & RTE_PTYPE_INNER_L4_MASK) == RTE_PTYPE_INNER_L4_TCP) {
         const struct rte_tcp_hdr *th;
 
@@ -537,14 +619,54 @@ L3:
 
         th = rte_pktmbuf_mtod_offset(m, struct rte_tcp_hdr *, offset);
         if (unlikely(th == NULL)) {
-            pkt_type = pkt_type & (RTE_PTYPE_INNER_L2_MASK | RTE_PTYPE_INNER_L3_MASK);
+            pkt_type = pkt_type & (RTE_PTYPE_L2_MASK | RTE_PTYPE_L3_MASK);
             goto done;
         }
-        p->inner_l4_len = (th->data_off & 0xf0) >> 2;
+
+        if (p->is_v4) {
+            p->tuple.v4.sp = th->src_port;
+            p->tuple.v4.dp = th->dst_port;
+        } else {
+            p->tuple.v6.sp = th->src_port;
+            p->tuple.v6.dp = th->dst_port;
+        }
+
+        goto done;
     } else if ((pkt_type & RTE_PTYPE_INNER_L4_MASK) == RTE_PTYPE_INNER_L4_SCTP) {
-        p->inner_l4_len = sizeof(struct rte_sctp_hdr);
+        const struct rte_sctp_hdr *sh;
+
+        if (unlikely(rte_pktmbuf_data_len(m) - offset < sizeof(*sh))) {
+            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            goto error;
+        }
+
+        sh = rte_pktmbuf_mtod_offset(m, struct rte_sctp_hdr *, offset);
+        if (unlikely(sh == NULL)) {
+            pkt_type = pkt_type & (RTE_PTYPE_L2_MASK | RTE_PTYPE_L3_MASK);
+            goto done;
+        }
+
+        if (p->is_v4) {
+            p->tuple.v4.sp = sh->src_port;
+            p->tuple.v4.dp = sh->dst_port;
+        } else {
+            p->tuple.v6.sp = sh->src_port;
+            p->tuple.v6.dp = sh->dst_port;
+        }
+
+        goto done;
+    } else if ((pkt_type & RTE_PTYPE_L4_MASK) == RTE_PTYPE_L4_ICMP) {
+        if (p->is_v4) {
+            p->tuple.v4.sp = 0;
+            p->tuple.v4.dp = 0;
+        } else {
+            p->tuple.v6.sp = 0;
+            p->tuple.v6.dp = 0;
+        }
+
+        goto done;
     } else {
-        p->inner_l4_len = 0;
+        pkt_type |= ptype_tunnel(&proto, m, &offset);
     }
 
 done:

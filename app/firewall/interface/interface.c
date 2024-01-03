@@ -8,6 +8,7 @@
 #include "../config.h"
 #include "../module.h"
 #include "../packet.h"
+
 #include "interface.h"
 #include "vwire.h"
 

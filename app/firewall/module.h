@@ -24,6 +24,7 @@ typedef enum {
     MOD_ID_NONE,
     MOD_ID_INTERFACE,
     MOD_ID_DECODER,
+    MOD_ID_ACL,
 } mod_id_t;
 
 

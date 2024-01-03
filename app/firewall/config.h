@@ -26,6 +26,7 @@ typedef struct {
     void *rx_queues[MAX_WORKER_NUM];
     void *tx_queues[MAX_PORT_NUM][MAX_QUEUE_NUM];
     void *interface_config;
+    void *acl_ctx;
 } config_t;
 
 #endif

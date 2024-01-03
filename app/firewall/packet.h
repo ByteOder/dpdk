@@ -1,10 +1,24 @@
 #ifndef _M_PACKET_H_
 #define _M_PACKET_H_
 
-#include <rte_mbuf_core.h>
+typedef struct {
+    uint8_t proto;
+    uint32_t sip;
+    uint32_t dip;
+    uint16_t sp;
+    uint16_t dp;
+} ip4_tuple_t;
+
+typedef struct {
+    uint8_t proto;
+    uint32_t sip[4];
+    uint32_t dip[4];
+    uint16_t sp;
+    uint16_t dp;
+} ip6_tuple_t;
 
 /** 
- * assure packet_t 8 bytes aligned
+ * Assure packet struct 8 bytes aligned
  * */
 #pragma pack(1)
 
@@ -14,17 +28,16 @@ typedef struct {
     uint32_t ptype;
     uint32_t flags;
 
-    struct {
-        uint16_t l2_len;
-        uint16_t l3_len;
-        uint16_t l4_len;
-        uint16_t tunnel_len;
-        uint16_t inner_l2_len;
-        uint16_t inner_l3_len;
-        uint16_t inner_l4_len;
-    };
+    uint8_t smac[6];
+    uint8_t dmac[6];
 
-    uint8_t reserved[102];
+    bool is_v4;
+    union {
+        ip4_tuple_t v4;
+        ip6_tuple_t v6;
+    } tuple;
+
+    uint8_t reserved[191];
 } packet_t;
 
 #pragma pack()

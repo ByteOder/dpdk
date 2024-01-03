@@ -8,7 +8,7 @@
 
 allow_experimental_apis = true
 
-deps += ['hash', 'lpm', 'fib', 'eventdev', 'cmdline']
+deps += ['hash', 'lpm', 'fib', 'eventdev', 'cmdline', 'acl']
 sources = files(
         'main.c',
         'module.c',
@@ -20,4 +20,7 @@ sources = files(
 
         # decode
         'decoder/decoder.c',
+
+        # acl
+        'acl/acl.c',
 )
