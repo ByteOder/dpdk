@@ -13,6 +13,8 @@ sources = files(
         'main.c',
         'module.c',
         'worker.c',
+        'cli.c',
+        'json.c',
 
         # interface
         'interface/interface.c',

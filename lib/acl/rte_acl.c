@@ -546,6 +546,23 @@ rte_acl_dump(const struct rte_acl_ctx *ctx)
 	printf("  num_tries=%"PRIu32"\n", ctx->num_tries);
 }
 
+void
+_rte_acl_dump(const struct rte_acl_ctx *ctx, char *buffer)
+{
+	if (!ctx || !buffer)
+		return;
+
+	sprintf(buffer, "acl context <%s>@%p\n", ctx->name, ctx);
+	sprintf(buffer + strlen(buffer), "  alg=%"PRId32"\n", ctx->alg);
+	sprintf(buffer + strlen(buffer), "  socket_id=%"PRId32"\n", ctx->socket_id);
+	sprintf(buffer + strlen(buffer), "  first_load_sz=%"PRIu32"\n", ctx->first_load_sz);
+	sprintf(buffer + strlen(buffer), "  max_rules=%"PRIu32"\n", ctx->max_rules);
+	sprintf(buffer + strlen(buffer), "  rule_size=%"PRIu32"\n", ctx->rule_sz);
+	sprintf(buffer + strlen(buffer), "  num_rules=%"PRIu32"\n", ctx->num_rules);
+	sprintf(buffer + strlen(buffer), "  num_categories=%"PRIu32"\n", ctx->num_categories);
+	sprintf(buffer + strlen(buffer), "  num_tries=%"PRIu32"\n", ctx->num_tries);
+}
+
 /*
  * Dump all ACL contexts to the stdout.
  */

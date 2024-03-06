@@ -39,6 +39,7 @@ foreach app:apps
         lds_script = meson.current_source_dir() + '/module_section.lds' 
         ldflags += ['-T', lds_script]
         ldflags += ['-ljson-c']
+        ldflags += ['-lcli']
     endif
 
     objs = [] # other object files to link against, used e.g. for

@@ -11,7 +11,6 @@
 
 int acl_init(__rte_unused void* cfg);
 mod_ret_t acl_proc(struct rte_mbuf *mbuf, mod_hook_t hook);
-void acl_list(void);
 
 #endif
 

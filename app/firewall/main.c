@@ -15,12 +15,14 @@
 #include "module.h"
 #include "worker.h"
 #include "packet.h"
+#include "cli.h"
 #include "interface/interface.h"
 
 volatile bool force_quit;
 
 config_t config = {
     .pktmbuf_pool = NULL,
+    .cli_def = NULL,
     .promiscuous = 1,
     .worker_num = 0,
     .port_num = 0,
@@ -58,6 +60,14 @@ main_loop(__rte_unused void *arg)
     }
 
     return 0;
+}
+
+static void
+mgmt_loop(__rte_unused config_t *c)
+{
+    while (!force_quit) {
+        _cli_run();
+    }
 }
 
 int main(int argc, char **argv)
@@ -167,6 +177,14 @@ int main(int argc, char **argv)
     }
 
     /**
+     * init command line
+     * */
+    ret = _cli_init(&config);
+    if (ret) {
+        rte_exit(EXIT_FAILURE, "cli init erorr\n");
+    }
+
+    /**
      * modules register and initialize
      * */
     modules_load();
@@ -176,9 +194,14 @@ int main(int argc, char **argv)
     }
 
     /**
-     * start up worker main loop on each lcore, except mgt-core
+     * start up worker loop on each lcore, except mgt-core
      * */
     rte_eal_mp_remote_launch(main_loop, (void *)&config, SKIP_MAIN);
+
+    /**
+     * start up management loop on mgt-core
+     * */
+    mgmt_loop(&config);
 
     ret = 0;
 

@@ -3,11 +3,10 @@
 #include <rte_ring.h>
 #include <rte_log.h>
 
-#include <json-c/json.h>
-
 #include "../config.h"
 #include "../module.h"
 #include "../packet.h"
+#include "../json.h"
 
 #include "interface.h"
 #include "vwire.h"
@@ -37,78 +36,55 @@ MODULE_DECLARE(interface) = {
 static int
 interface_json_load(config_t *config)
 {
-    const char *file = "interface.json";
-    char f[MAX_FILE_PATH] = {0};
-    long fsize;
     char *js = NULL;
     json_object *jr = NULL, *ja;
     int i, interface_num;
     int ret = 0;
 
-    sprintf(f, "%s/%s", CONFIG_PATH, file);
-
-    FILE *fd = fopen(f, "r");
-    if (!fd) {
-        printf("open file %s failed\n", f);
-        ret = -1;
-        goto done;
+    js = JS(CONFIG_PATH, "interface.json");
+    if (!js) {
+        printf("get json string failed\n");
+        return -1;
     }
 
-    fseek(fd, 0, SEEK_END);
-    fsize = ftell(fd);
-    fseek(fd, 0, SEEK_SET);
-    
-    js = (char *)malloc(fsize + 1);
-    fread(js, 1, fsize, fd);
-    js[fsize] = '\0';
-    fclose(fd);
-
-    jr = json_tokener_parse(js);
+    jr = JR(js);
     if (!jr) {
-        printf("can't find json root in file %s\n", f);
+        printf("get json root failed\n");
         ret = -1;
         goto done;
     }
 
-    if (json_object_object_get_ex(jr, "ports", &ja) == 0) {
-        printf("can't find port array in file %s\n", f);
+    interface_num = JA(jr, "ports", &ja);
+    if (interface_num == -1) {
+        printf("no ports found\n");
         ret = -1;
         goto done;
     }
 
-    interface_num = json_object_array_length(ja);
+    #define INTF_JV(item) \
+        jv = JV(jo, item); \
+        if (!jv) { \
+            printf("parse %s failed\n", item); \
+            ret = -1; \
+            goto done; \
+        }
+
     for (i = 0; i < interface_num; i++) {
         json_object *jo, *jv;
         port_config_t *port_config = &interface_config.ports[i];
-        jo = json_object_array_get_idx(ja, i);
+        jo = JO(ja, i);
 
-        if (!json_object_object_get_ex(jo, "id", &jv)) {
-            printf("port id not found\n");
-            ret = -1;
-            goto done;
-        }
-        port_config->id = atoi(json_object_get_string(jv));
+        INTF_JV("id");
+        port_config->id = JV_I(jv);
 
-        if (!json_object_object_get_ex(jo, "type", &jv)) {
-            printf("port type not found\n");
-            ret = -1;
-            goto done;
-        }
-        port_config->type = atoi(json_object_get_string(jv));
+        INTF_JV("type");
+        port_config->type = JV_I(jv);
 
-        if (!json_object_object_get_ex(jo, "bus", &jv)) {
-            printf("port bus not found\n");
-            ret = -1;
-            goto done;
-        }
-        sprintf(port_config->bus, "%s", json_object_get_string(jv));
+        INTF_JV("bus");
+        sprintf(port_config->bus, "%s", JV_S(jv));
 
-        if (!json_object_object_get_ex(jo, "mac", &jv)) {
-            printf("port mac not found\n");
-            ret = -1;
-            goto done;
-        }
-        sprintf(port_config->mac, "%s", json_object_get_string(jv));
+        INTF_JV("mac")
+        sprintf(port_config->mac, "%s", JV_S(jv));
 
         printf("port %u type %u bus %s mac %s\n",
             port_config->id, port_config->type, port_config->bus, port_config->mac);
@@ -116,11 +92,13 @@ interface_json_load(config_t *config)
         interface_config.port_num ++;
     }
 
+    #undef INTF_JV
+
     interface_config.priv = config;
 
 done:
-    if (js) free(js);
-    if (jr) json_object_put(jr);
+    if (js) JS_FREE(js);
+    if (jr) JR_FREE(jr);
     if (ret == 0) config->interface_config = &interface_config;
     return ret;
 }

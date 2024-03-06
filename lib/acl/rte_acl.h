@@ -349,6 +349,9 @@ rte_acl_set_ctx_classify(struct rte_acl_ctx *ctx,
 void
 rte_acl_dump(const struct rte_acl_ctx *ctx);
 
+void
+_rte_acl_dump(const struct rte_acl_ctx *ctx, char *buffer);
+
 /**
  * Dump all ACL context structures to the console.
  */

@@ -1,11 +1,12 @@
 #include <arpa/inet.h>
 #include <rte_acl.h>
-#include <json-c/json.h>
 #include <rte_ip.h>
 
 #include "../config.h"
 #include "../module.h"
 #include "../packet.h"
+#include "../json.h"
+#include "../cli.h"
 
 #include "acl.h"
 
@@ -82,134 +83,97 @@ MODULE_DECLARE(acl) = {
 static int
 acl_rule_load(config_t *config)
 {
-    const char *file = "acl.json";
-    char f[MAX_FILE_PATH] = {0};
-    long fsize;
     char *js = NULL;
     char *p = NULL;
     json_object *jr = NULL, *ja;
     int i, rule_num;
     int ret = 0;
 
-    sprintf(f, "%s/%s", CONFIG_PATH, file);
-
-    FILE *fd = fopen(f, "r");
-    if (!fd) {
-        printf("open file %s failed\n", f);
+    js = JS(CONFIG_PATH, "acl.json");
+    if (!js) {
         return -1;
     }
 
-    fseek(fd, 0, SEEK_END);
-    fsize = ftell(fd);
-    fseek(fd, 0, SEEK_SET);
-    
-    js = (char *)malloc(fsize + 1);
-    fread(js, 1, fsize, fd);
-    js[fsize] = '\0';
-    fclose(fd);
-
-    jr = json_tokener_parse(js);
+    jr = JR(js);
     if (!jr) {
-        printf("can't find json root in file %s\n", f);
-        free(js);
+        JS_FREE(js);
         return -1;
     }
 
-    if (json_object_object_get_ex(jr, "rules", &ja) == 0) {
-        printf("can't find rules array in file %s\n", f);
-        free(js);
-        json_object_put(jr);
+    rule_num = JA(jr, "rules", &ja);
+    if (rule_num == -1) {
+        JS_FREE(js);
+        JR_FREE(jr);
         return -1;
     }
 
-    rule_num = json_object_array_length(ja);
     struct acl_rule r[rule_num];
+
+    #define ACL_JV(item) \
+        jv = JV(jo, item); \
+        if (!jv) { \
+            ret = -1; \
+            goto done; \
+        }
 
     for (i = 0; i < rule_num; i++) {
         json_object *jo, *jv;
         char ip[16], mask[4];
 
-        jo = json_object_array_get_idx(ja, i);
-
-        // id
-        if (!json_object_object_get_ex(jo, "id", &jv)) {
-            printf("acl rule id not found\n");
-            ret = -1;
-            goto done;
+        jo = JO(ja, i);
+        
+        ACL_JV("enabled");
+        if (!JV_I(jv)) {
+            continue;
         }
-        r[i].data.priority = atoi(json_object_get_string(jv));
+
+        ACL_JV("id");
+        r[i].data.priority = JV_I(jv);
         r[i].data.userdata = r[i].data.priority;
 
-        // src ip and mask
         memset(ip, 0, 16);
         memset(mask, 0, 4);
-        if (!json_object_object_get_ex(jo, "sip", &jv)) {
-            printf("src address not found\n");
-            ret = -1;
-            goto done;
-        }
-        if ((p = strstr(json_object_get_string(jv), "/")) != NULL) {
+        
+        ACL_JV("sip");
+        if ((p = strstr(JV_S(jv), "/")) != NULL) {
             *p = ' ';
-            sscanf(json_object_get_string(jv), "%s %s", ip, mask);
+            sscanf(JV_S(jv), "%s %s", ip, mask);
             r[i].field[1].value.u32 = ntohl(inet_addr(ip));
             r[i].field[1].mask_range.u32 = atoi(mask);
         } else {
-            r[i].field[1].value.u32 = ntohl(inet_addr(json_object_get_string(jv)));
+            r[i].field[1].value.u32 = ntohl(inet_addr(JV_S(jv)));
             r[i].field[1].mask_range.u32 = 32;
         }
 
-        // destination ip and mask
         memset(ip, 0, 16);
         memset(mask, 0, 4);
-        if (!json_object_object_get_ex(jo, "dip", &jv)) {
-            printf("dst address not found\n");
-            ret = -1;
-            goto done;
-        }
 
-        if ((p = strstr(json_object_get_string(jv), "/")) != NULL) {
+        ACL_JV("dip");
+        if ((p = strstr(JV_S(jv), "/")) != NULL) {
             *p = ' ';
-            sscanf(json_object_get_string(jv), "%s %s", ip, mask);
+            sscanf(JV_S(jv), "%s %s", ip, mask);
             r[i].field[2].value.u32 = ntohl(inet_addr(ip));
             r[i].field[2].mask_range.u32 = atoi(mask);
         } else {
-            r[i].field[2].value.u32 = ntohl(inet_addr(json_object_get_string(jv)));
+            r[i].field[2].value.u32 = ntohl(inet_addr(JV_S(jv)));
             r[i].field[2].mask_range.u32 = 32;
         }
 
-        // src port
-        if (!json_object_object_get_ex(jo, "sp", &jv)) {
-            printf("src port not found\n");
-            ret = -1;
-            goto done;
-        }
-        r[i].field[3].value.u16 = atoi(json_object_get_string(jv));
+        ACL_JV("sp");
+        r[i].field[3].value.u16 = JV_I(jv);
         r[i].field[3].mask_range.u16 = 0xffff;
 
-        // dst port
-        if (!json_object_object_get_ex(jo, "dp", &jv)) {
-            printf("dst port not found\n");
-            ret = -1;
-            goto done;
-        }
-        r[i].field[4].value.u16 = atoi(json_object_get_string(jv));
+        ACL_JV("dp");
+        r[i].field[4].value.u16 = JV_I(jv);
         r[i].field[4].mask_range.u16 = 0xffff;
 
-        if (!json_object_object_get_ex(jo, "proto", &jv)) {
-            printf("proto not found\n");
-            ret = -1;
-            goto done;
-        }
-        r[i].field[0].value.u8 = atoi(json_object_get_string(jv));
+        ACL_JV("proto");
+        r[i].field[0].value.u8 = JV_I(jv);
         r[i].field[0].mask_range.u8 = 0xff;
 
-        if (!json_object_object_get_ex(jo, "action", &jv)) {
-            printf("action not found\n");
-            ret = -1;
-            goto done;
-        }
+        ACL_JV("action");
         r[i].data.category_mask = 1;
-        r[i].data.action = atoi(json_object_get_string(jv));
+        r[i].data.action = JV_I(jv);
 
         printf("acl add rule id %u action %u proto %u sip %u smask %u dip %u dmask %u sp %u dp %u\n",
             r[i].data.priority,
@@ -223,6 +187,8 @@ acl_rule_load(config_t *config)
             r[i].field[4].value.u16
         );
     }
+
+    #undef ACL_JV
 
     if (!m_acl_ctx) {
         m_acl_ctx = rte_acl_create(&acl_param);
@@ -249,8 +215,8 @@ acl_rule_load(config_t *config)
     }
 
 done:
-    if (js) free(js);
-    if (jr) json_object_put(jr);
+    if (js) JS_FREE(js);
+    if (jr) JR_FREE(jr);
 
     if (ret) {
         config->acl_ctx = NULL;
@@ -259,6 +225,89 @@ done:
     }
 
     return ret;
+}
+
+static int 
+acl_show(struct cli_def *cli, const char *command, char *argv[], int argc) 
+{
+    cli_print(cli, "command %s argv %s argc %d", command, argv[0], argc);
+
+    char *js = NULL;
+    json_object *jr = NULL, *ja;
+    int i, rule_num;
+    int ret = 0;
+    
+    js = JS(CONFIG_PATH, "acl.json");
+    if (!js) {
+        return -1;
+    }
+
+    jr = JR(js);
+    if (!jr) {
+        JS_FREE(js);
+        return -1;
+    }
+
+    rule_num = JA(jr, "rules", &ja);
+    if (rule_num == -1) {
+        JS_FREE(js);
+        JR_FREE(jr);
+        return -1;
+    }
+
+    #define ACL_PRINT(item) \
+        jv = JV(jo, item); \
+        cli_print(cli, "%s: %s", item, JV_S(jv));
+
+    for (i = 0; i < rule_num; i++) {
+        json_object *jo, *jv;
+        jo = JO(ja, i);
+        ACL_PRINT("id");
+        ACL_PRINT("enabled");
+        ACL_PRINT("sip");
+        ACL_PRINT("dip");
+        ACL_PRINT("sp");
+        ACL_PRINT("dp");
+        ACL_PRINT("proto");
+        ACL_PRINT("action");
+        cli_print(cli, "%s", "");
+    }
+
+    #undef ACL_PRINT
+
+    if (js) JS_FREE(js);
+    if (jr) JR_FREE(jr);
+    return ret;
+}
+
+static int 
+acl_dump(struct cli_def *cli, const char *command, char *argv[], int argc) 
+{
+    char buffer[2048] = {0};
+    _rte_acl_dump(m_acl_ctx, buffer);
+    cli_print(cli, "command %s argv %s argc %d", command, argv[0], argc);
+    cli_print(cli, "%s", buffer);
+    return 0;
+}
+
+static void
+acl_cli_register(config_t *config)
+{
+    struct cli_def *cli_def;
+    struct cli_command *c;
+
+    if (!config) {
+        return;
+    }
+
+    cli_def = config->cli_def;
+    if (!cli_def) {
+        return;
+    }
+
+    c = cli_register_command(cli_def, NULL, "acl", NULL, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "access control list");
+    cli_register_command(cli_def, c, "dump", acl_dump, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "dump acl context");
+    cli_register_command(cli_def, c, "show", acl_show, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "show acl config");
 }
 
 int acl_init(__rte_unused void* cfg)
@@ -273,7 +322,7 @@ int acl_init(__rte_unused void* cfg)
         rte_exit(EXIT_FAILURE, "acl rule load error");
     }
 
-    acl_list();
+    acl_cli_register(cfg);
 
     return 0;
 }
@@ -334,11 +383,6 @@ mod_ret_t acl_proc(struct rte_mbuf *mbuf, mod_hook_t hook)
     }
 
     return MOD_RET_ACCEPT;
-}
-
-void acl_list(void)
-{
-    rte_acl_dump(m_acl_ctx);
 }
 
 // file format utf-8

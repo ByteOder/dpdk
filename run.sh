@@ -3,4 +3,5 @@
 #! /bin/bash
 
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:`pwd`/build/module/json-c/lib
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:`pwd`/build/module/libcli/lib
 export PATH=$PATH:`pwd`/build/app
