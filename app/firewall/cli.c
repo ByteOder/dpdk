@@ -40,7 +40,7 @@ cli_check_auth(const char *username, const char *password)
 static int
 cli_check_enable(const char *password) 
 {
-    return !strcasecmp(password, "topsecret");
+    return !strcasecmp(password, "superman");
 }
 
 static int
@@ -50,22 +50,9 @@ cli_idle_timeout(struct cli_def *cli)
     return CLI_QUIT;
 }
 
-static int 
-cli_hello(struct cli_def *cli, const char *command, char *argv[], int argc) 
-{
-    int i;
-    cli_print(cli, "called %s with \"%s\"", __func__, command);
-    cli_print(cli, "%d arguments:", argc);
-    for (i = 0; i < argc; i++) cli_print(cli, "        %s", argv[i]);
-
-    return CLI_OK;
-}
-
 int _cli_init(void *cfg)
 {
     config_t *_cfg = (config_t *)cfg;
-    struct cli_command *c;
-    struct cli_optarg *o;
     struct sockaddr_in addr;
     int on = 1;
     const char *banner = 
@@ -91,11 +78,6 @@ int _cli_init(void *cfg)
     cli_set_idle_timeout_callback(m_cli_def, 60, cli_idle_timeout);
     cli_set_auth_callback(m_cli_def, cli_check_auth);
     cli_set_enable_callback(m_cli_def, cli_check_enable);
-
-    c = cli_register_command(m_cli_def, NULL, "hello", cli_hello, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "say hello");
-    o = cli_register_optarg(c, "world", CLI_CMD_OPTIONAL_FLAG, PRIVILEGE_UNPRIVILEGED, MODE_EXEC,
-                          "say hello world", NULL, NULL, NULL);
-    cli_optarg_addhelp(o, "word", "(any case)set to world");
 
     _cfg->cli_def = m_cli_def;
 

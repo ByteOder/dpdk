@@ -257,7 +257,7 @@ acl_show(struct cli_def *cli, const char *command, char *argv[], int argc)
 
     #define ACL_PRINT(item) \
         jv = JV(jo, item); \
-        cli_print(cli, "%s: %s", item, JV_S(jv));
+        CLI_PRINT(cli, "%s: %s", item, JV_S(jv));
 
     for (i = 0; i < rule_num; i++) {
         json_object *jo, *jv;
@@ -270,7 +270,7 @@ acl_show(struct cli_def *cli, const char *command, char *argv[], int argc)
         ACL_PRINT("dp");
         ACL_PRINT("proto");
         ACL_PRINT("action");
-        cli_print(cli, "%s", "");
+        CLI_PRINT(cli, "%s", "");
     }
 
     #undef ACL_PRINT
@@ -285,8 +285,8 @@ acl_dump(struct cli_def *cli, const char *command, char *argv[], int argc)
 {
     char buffer[2048] = {0};
     _rte_acl_dump(m_acl_ctx, buffer);
-    cli_print(cli, "command %s argv %s argc %d", command, argv[0], argc);
-    cli_print(cli, "%s", buffer);
+    CLI_PRINT(cli, "command %s argv %s argc %d", command, argv[0], argc);
+    CLI_PRINT(cli, "%s", buffer);
     return 0;
 }
 
@@ -305,9 +305,9 @@ acl_cli_register(config_t *config)
         return;
     }
 
-    c = cli_register_command(cli_def, NULL, "acl", NULL, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "access control list");
-    cli_register_command(cli_def, c, "dump", acl_dump, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "dump acl context");
-    cli_register_command(cli_def, c, "show", acl_show, PRIVILEGE_UNPRIVILEGED, MODE_EXEC, "show acl config");
+    c = CLI_CMD_C(cli_def, NULL, "acl", NULL, "access control list");
+    CLI_CMD_C(cli_def, c, "dump", acl_dump, "dump acl context");
+    CLI_CMD_C(cli_def, c, "show", acl_show, "show acl config");
 }
 
 int acl_init(__rte_unused void* cfg)
