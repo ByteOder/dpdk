@@ -83,26 +83,18 @@ MODULE_DECLARE(acl) = {
 static int
 acl_rule_load(config_t *config)
 {
-    char *js = NULL;
     char *p = NULL;
     json_object *jr = NULL, *ja;
     int i, rule_num;
     int ret = 0;
 
-    js = JS(CONFIG_PATH, "acl.json");
-    if (!js) {
-        return -1;
-    }
-
-    jr = JR(js);
+    jr = JR(CONFIG_PATH, "acl.json");
     if (!jr) {
-        JS_FREE(js);
         return -1;
     }
 
     rule_num = JA(jr, "rules", &ja);
     if (rule_num == -1) {
-        JS_FREE(js);
         JR_FREE(jr);
         return -1;
     }
@@ -174,18 +166,6 @@ acl_rule_load(config_t *config)
         ACL_JV("action");
         r[i].data.category_mask = 1;
         r[i].data.action = JV_I(jv);
-
-        printf("acl add rule id %u action %u proto %u sip %u smask %u dip %u dmask %u sp %u dp %u\n",
-            r[i].data.priority,
-            r[i].data.userdata,
-            r[i].field[0].value.u8,
-            r[i].field[1].value.u32,
-            r[i].field[1].mask_range.u32,
-            r[i].field[2].value.u32,
-            r[i].field[2].mask_range.u32,
-            r[i].field[3].value.u16,
-            r[i].field[4].value.u16
-        );
     }
 
     #undef ACL_JV
@@ -215,7 +195,6 @@ acl_rule_load(config_t *config)
     }
 
 done:
-    if (js) JS_FREE(js);
     if (jr) JR_FREE(jr);
 
     if (ret) {
@@ -230,29 +209,28 @@ done:
 static int 
 acl_show(struct cli_def *cli, const char *command, char *argv[], int argc) 
 {
-    cli_print(cli, "command %s argv %s argc %d", command, argv[0], argc);
-
-    char *js = NULL;
     json_object *jr = NULL, *ja;
-    int i, rule_num;
+    char *opt;
+    int i, rule_id, rule_num;
     int ret = 0;
     
-    js = JS(CONFIG_PATH, "acl.json");
-    if (!js) {
-        return -1;
-    }
+    CLI_PRINT(cli, "command %s argv[0] %s argc %d", command, argv[0], argc);
 
-    jr = JR(js);
+    jr = JR(CONFIG_PATH, "acl.json");
     if (!jr) {
-        JS_FREE(js);
         return -1;
     }
 
     rule_num = JA(jr, "rules", &ja);
     if (rule_num == -1) {
-        JS_FREE(js);
         JR_FREE(jr);
         return -1;
+    }
+
+    opt = CLI_OPT_V(cli, "id");
+    rule_id = -1;
+    if (opt) {
+        rule_id = atoi(opt);
     }
 
     #define ACL_PRINT(item) \
@@ -262,6 +240,16 @@ acl_show(struct cli_def *cli, const char *command, char *argv[], int argc)
     for (i = 0; i < rule_num; i++) {
         json_object *jo, *jv;
         jo = JO(ja, i);
+
+        /** filter rule by id
+         * */
+        if (rule_id != -1) {
+            jv = JV(jo, "id");
+            if (JV_I(jv) != rule_id) {
+                continue;
+            }
+        }
+
         ACL_PRINT("id");
         ACL_PRINT("enabled");
         ACL_PRINT("sip");
@@ -275,7 +263,6 @@ acl_show(struct cli_def *cli, const char *command, char *argv[], int argc)
 
     #undef ACL_PRINT
 
-    if (js) JS_FREE(js);
     if (jr) JR_FREE(jr);
     return ret;
 }
@@ -284,17 +271,186 @@ static int
 acl_dump(struct cli_def *cli, const char *command, char *argv[], int argc) 
 {
     char buffer[2048] = {0};
+
+    CLI_PRINT(cli, "command %s argv[0] %s argc %d", command, argv[0], argc);
+
     _rte_acl_dump(m_acl_ctx, buffer);
-    CLI_PRINT(cli, "command %s argv %s argc %d", command, argv[0], argc);
     CLI_PRINT(cli, "%s", buffer);
     return 0;
+}
+
+static int 
+acl_add(struct cli_def *cli, const char *command, char *argv[], int argc)
+{
+    json_object *jr = NULL, *ja, *jo, *jv;
+    int rule_num;
+    int ret = 0;
+
+    CLI_PRINT(cli, "command %s argv[0] %s argc %d", command, argv[0], argc);
+    
+    jr = JR(CONFIG_PATH, "acl.json");
+    if (!jr) {
+        CLI_PRINT(cli, "load acl json file error");
+        ret = -1;
+        goto done;
+    }
+
+    rule_num = JA(jr, "rules", &ja);
+    if (rule_num == -1) {
+        CLI_PRINT(cli, "rules array not exist");
+        ret = -1;
+        goto done;
+    }
+
+    #define ACL_SET(item) \
+        jv = JV_NEW(CLI_OPT_V(cli, item)); \
+        if (!jv) { ret = -1; CLI_PRINT(cli, "alloc json value failed"); goto done; } \
+        CLI_PRINT(cli, "set item %s val %s", item, CLI_OPT_V(cli, item)); \
+        JO_ADD(jo, item, jv);
+    
+    jo = JO_NEW();
+    if (!jo) {
+        CLI_PRINT(cli, "alloc json object failed");
+        goto done;
+    }
+
+    ACL_SET("id");
+    ACL_SET("sip");
+    ACL_SET("dip");
+    ACL_SET("sp");
+    ACL_SET("dp");
+    ACL_SET("proto");
+    ACL_SET("action");
+    ACL_SET("enabled");
+
+    #undef ACL_SET
+
+    JA_ADD(ja, jo);
+    ret = JR_SAVE(CONFIG_PATH, "acl.json", jr);
+    if (ret == -1) {
+        CLI_PRINT(cli, "save json file error");
+        goto done;
+    }
+
+    CLI_PRINT(cli, "ok!");
+
+done:
+    if (jr) JR_FREE(jr);
+    return ret;
+}
+
+static int 
+acl_delete(struct cli_def *cli, const char *command, char *argv[], int argc) 
+{
+    json_object *jr = NULL, *ja;
+    char *opt;
+    int i, rule_id, rule_num;
+    int ret = 0;
+    
+    CLI_PRINT(cli, "command %s argv[0] %s argc %d", command, argv[0], argc);
+
+    jr = JR(CONFIG_PATH, "acl.json");
+    if (!jr) {
+        return -1;
+    }
+
+    rule_num = JA(jr, "rules", &ja);
+    if (rule_num == -1) {
+        JR_FREE(jr);
+        return -1;
+    }
+
+    opt = CLI_OPT_V(cli, "id");
+    rule_id = -1;
+    if (opt) {
+        rule_id = atoi(opt);
+    }
+
+    for (i = 0; i < rule_num; i++) {
+        json_object *jo, *jv;
+        jo = JO(ja, i);
+
+        /** filter rule by id
+         * */
+        if (rule_id != -1) {
+            jv = JV(jo, "id");
+            if (JV_I(jv) == rule_id) {
+                JA_DEL(ja, i, 1);
+                CLI_PRINT(cli, "delete acl rule %d", rule_id);
+                JR_SAVE(CONFIG_PATH, "acl.json", jr);
+                break;
+            }
+        }
+    }
+
+    if (jr) JR_FREE(jr);
+    return ret;
+}
+
+static int 
+acl_set(struct cli_def *cli, const char *command, char *argv[], int argc)
+{
+    json_object *jr = NULL, *ja, *jo, *jv;
+    int i, rule_num;
+    int ret = 0;
+
+    CLI_PRINT(cli, "command %s argv[0] %s argc %d", command, argv[0], argc);
+    
+    jr = JR(CONFIG_PATH, "acl.json");
+    if (!jr) {
+        CLI_PRINT(cli, "load acl json file error");
+        ret = -1;
+        goto done;
+    }
+
+    rule_num = JA(jr, "rules", &ja);
+    if (rule_num == -1) {
+        CLI_PRINT(cli, "rules array not exist");
+        ret = -1;
+        goto done;
+    }
+
+    #define ACL_MOD(item) \
+        jv = JV(jo, item); \
+        if (CLI_OPT_V(cli, item)) { \
+            JV_SET(jv, CLI_OPT_V(cli, item)); \
+            CLI_PRINT(cli, "modify item %s val %s", item, CLI_OPT_V(cli, item)); \
+        }
+
+    for (i = 0; i < rule_num; i++) {
+        jo = JO(ja, i);
+        jv = JV(jo, "id");
+        if (JV_I(jv) == atoi(CLI_OPT_V(cli, "id"))) {
+            ACL_MOD("sip");
+            ACL_MOD("dip");
+            ACL_MOD("sp");
+            ACL_MOD("dp");
+            ACL_MOD("proto");
+            ACL_MOD("action");
+            ACL_MOD("enabled");
+        }
+    }
+
+    #undef ACL_MOD
+
+    ret = JR_SAVE(CONFIG_PATH, "acl.json", jr);
+    if (ret == -1) {
+        CLI_PRINT(cli, "save json file error");
+        goto done;
+    }
+
+    CLI_PRINT(cli, "ok!");
+
+done:
+    if (jr) JR_FREE(jr);
+    return ret;
 }
 
 static void
 acl_cli_register(config_t *config)
 {
     struct cli_def *cli_def;
-    struct cli_command *c;
+    struct cli_command *c, *c1;
 
     if (!config) {
         return;
@@ -307,7 +463,32 @@ acl_cli_register(config_t *config)
 
     c = CLI_CMD_C(cli_def, NULL, "acl", NULL, "access control list");
     CLI_CMD_C(cli_def, c, "dump", acl_dump, "dump acl context");
-    CLI_CMD_C(cli_def, c, "show", acl_show, "show acl config");
+    
+    c1 = CLI_CMD_C(cli_def, c, "show", acl_show, "show acl config");
+    CLI_OPT(c1, "id", "rule id");
+
+    c1 = CLI_CMD_C(cli_def, c, "add", acl_add, "add an acl rule");
+    CLI_OPT_A(c1, "id", "rule id");
+    CLI_OPT_A(c1, "sip", "source ip address");
+    CLI_OPT_A(c1, "dip", "destination ip address");
+    CLI_OPT_A(c1, "sp", "source port");
+    CLI_OPT_A(c1, "dp", "destination port");
+    CLI_OPT_A(c1, "proto", "transport layer protocol");
+    CLI_OPT_A(c1, "action", "do action when rule matched");
+    CLI_OPT_A(c1, "enabled", "switch of rule");
+
+    c1 = CLI_CMD_C(cli_def, c, "delete", acl_delete, "delete an acl rule");
+    CLI_OPT_A(c1, "id", "rule id");
+
+    c1 = CLI_CMD_C(cli_def, c, "set", acl_set, "modify an acl rule");
+    CLI_OPT_A(c1, "id", "rule id");
+    CLI_OPT(c1, "sip", "source ip address");
+    CLI_OPT(c1, "dip", "destination ip address");
+    CLI_OPT(c1, "sp", "source port");
+    CLI_OPT(c1, "dp", "destination port");
+    CLI_OPT(c1, "proto", "transport layer protocol");
+    CLI_OPT(c1, "action", "do action when rule matched");
+    CLI_OPT(c1, "enabled", "switch of rule");
 }
 
 int acl_init(__rte_unused void* cfg)

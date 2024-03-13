@@ -6,7 +6,6 @@
 static int
 vwire_json_load(interface_config_t *interface_config)
 {
-    char *js = NULL;
     json_object *jr = NULL, *ja;
     int i, vwire_pairs_num;
     vwire_config_t *vwire_pairs_mem = NULL;
@@ -17,13 +16,7 @@ vwire_json_load(interface_config_t *interface_config)
         goto done;
     }
 
-    js = JS(CONFIG_PATH, "vwire.json");
-    if (!js) {
-        ret = -1;
-        goto done;
-    }
-
-    jr = JR(js);
+    jr = JR(CONFIG_PATH, "vwire.json");
     if (!jr) {
         ret = -1;
         goto done;
@@ -78,7 +71,6 @@ vwire_json_load(interface_config_t *interface_config)
     #undef VWIRE_JV
 
 done:
-    if (js) JS_FREE(js);
     if (jr) JR_FREE(jr);
 
     if (ret) {

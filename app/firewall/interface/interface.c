@@ -36,22 +36,14 @@ MODULE_DECLARE(interface) = {
 static int
 interface_json_load(config_t *config)
 {
-    char *js = NULL;
     json_object *jr = NULL, *ja;
     int i, interface_num;
     int ret = 0;
 
-    js = JS(CONFIG_PATH, "interface.json");
-    if (!js) {
+    jr = JR(CONFIG_PATH, "interface.json");
+    if (!jr) {
         printf("get json string failed\n");
         return -1;
-    }
-
-    jr = JR(js);
-    if (!jr) {
-        printf("get json root failed\n");
-        ret = -1;
-        goto done;
     }
 
     interface_num = JA(jr, "ports", &ja);
@@ -97,7 +89,6 @@ interface_json_load(config_t *config)
     interface_config.priv = config;
 
 done:
-    if (js) JS_FREE(js);
     if (jr) JR_FREE(jr);
     if (ret == 0) config->interface_config = &interface_config;
     return ret;
