@@ -11,6 +11,7 @@ allow_experimental_apis = true
 deps += ['hash', 'lpm', 'fib', 'eventdev', 'cmdline', 'acl']
 sources = files(
         'main.c',
+        'config.c',
         'module.c',
         'worker.c',
         'cli.c',

@@ -50,9 +50,9 @@ cli_idle_timeout(struct cli_def *cli)
     return CLI_QUIT;
 }
 
-int _cli_init(void *cfg)
+int _cli_init(void *config)
 {
-    config_t *_cfg = (config_t *)cfg;
+    config_t *c = (config_t *)config;
     struct sockaddr_in addr;
     int on = 1;
     const char *banner = 
@@ -65,28 +65,27 @@ int _cli_init(void *cfg)
     "                             \\/              \\/\n"
     "=====================================================================\n";
 
-    if (m_cli_def || m_cli_sockfd) {
+    if (c->cli_def || c->cli_sockfd) {
         return -1;
     }
 
-    m_cli_def = cli_init();
-    cli_set_banner(m_cli_def, banner);
-    cli_set_hostname(m_cli_def, "sys");
-    cli_telnet_protocol(m_cli_def, 1);
-    cli_regular(m_cli_def, cli_regular_callback);
-    cli_regular_interval(m_cli_def, 5);
-    cli_set_idle_timeout_callback(m_cli_def, 60, cli_idle_timeout);
-    cli_set_auth_callback(m_cli_def, cli_check_auth);
-    cli_set_enable_callback(m_cli_def, cli_check_enable);
+    c->cli_def = cli_init();
+    cli_set_banner(c->cli_def, banner);
+    cli_set_hostname(c->cli_def, "sys");
+    cli_telnet_protocol(c->cli_def, 1);
+    cli_regular(c->cli_def, cli_regular_callback);
+    cli_regular_interval(c->cli_def, 5);
+    cli_set_idle_timeout_callback(c->cli_def, 60, cli_idle_timeout);
+    cli_set_auth_callback(c->cli_def, cli_check_auth);
+    cli_set_enable_callback(c->cli_def, cli_check_enable);
+    cli_set_context(c->cli_def, c);
 
-    _cfg->cli_def = m_cli_def;
-
-    if ((m_cli_sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    if ((c->cli_sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket");
         return -1;
     }
 
-    if (setsockopt(m_cli_sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on))) {
+    if (setsockopt(c->cli_sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on))) {
         perror("setsockopt");
         return -1;
     }
@@ -95,12 +94,12 @@ int _cli_init(void *cfg)
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(CLI_PORT);
-    if (bind(m_cli_sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    if (bind(c->cli_sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("bind");
         return -1;
     }
 
-    if (listen(m_cli_sockfd, 50) < 0) {
+    if (listen(c->cli_sockfd, 50) < 0) {
         perror("listen");
         return -1;
     }
@@ -108,8 +107,9 @@ int _cli_init(void *cfg)
     return 0;
 }
 
-int _cli_run(void)
+int _cli_run(void *config)
 {
+    config_t *c = config;
     struct timeval timeout;
     fd_set fds;
     int r, x;
@@ -117,9 +117,9 @@ int _cli_run(void)
     timeout.tv_sec = 10;
     timeout.tv_usec = 0;
     FD_ZERO(&fds);
-    FD_SET(m_cli_sockfd, &fds);
+    FD_SET(c->cli_sockfd, &fds);
 
-    r = select(m_cli_sockfd + 1, &fds, NULL, NULL, &timeout);
+    r = select(c->cli_sockfd + 1, &fds, NULL, NULL, &timeout);
     if (r == -1) {
         return -1;
     }
@@ -128,9 +128,9 @@ int _cli_run(void)
         return -1;
     }
 
-    x = accept(m_cli_sockfd, NULL, 0);
+    x = accept(c->cli_sockfd, NULL, 0);
     if (x > 0) {
-        cli_loop(m_cli_def, x);
+        cli_loop(c->cli_def, x);
         close(x);
     }
 

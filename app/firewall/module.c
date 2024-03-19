@@ -41,7 +41,7 @@ int modules_init(void *config)
     return 0;
 }
 
-int modules_proc(struct rte_mbuf *pkt, mod_hook_t hook)
+int modules_proc(void *config, struct rte_mbuf *pkt, mod_hook_t hook)
 {
     module_t *m;
     int id;
@@ -50,7 +50,7 @@ int modules_proc(struct rte_mbuf *pkt, mod_hook_t hook)
         mod_ret_t ret;
 
         if (m && m->proc && m->enabled) {
-            ret = m->proc(pkt, hook);
+            ret = m->proc(config, pkt, hook);
 
             if (ret == MOD_RET_STOLEN) {
                 return ret;

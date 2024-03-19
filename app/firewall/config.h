@@ -24,11 +24,17 @@ typedef struct {
     int rtx_core;
     int rtx_worker_core;
     void *cli_def;
+    int cli_sockfd;
     void *rx_queues[MAX_WORKER_NUM];
     void *tx_queues[MAX_PORT_NUM][MAX_QUEUE_NUM];
     void *interface_config;
     void *acl_ctx;
+    int reload_mark;    /** mark for configuration reload */
+    int switch_mark;    /** mark for configuration switch */
 } config_t;
+
+int config_reload(config_t *c);
+config_t *config_switch(config_t *c, int lcore_id);
 
 #endif
 

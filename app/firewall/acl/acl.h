@@ -9,8 +9,8 @@
 #define ACL_ACTION_ALLOW 0
 #define ACL_ACTION_DENY 1
 
-int acl_init(__rte_unused void* cfg);
-mod_ret_t acl_proc(struct rte_mbuf *mbuf, mod_hook_t hook);
+int acl_init(void *config);
+mod_ret_t acl_proc(void *config, struct rte_mbuf *mbuf, mod_hook_t hook);
 
 #endif
 

@@ -85,10 +85,10 @@ done:
     return ret;
 }
 
-int vwire_init(__rte_unused void* cfg)
+int vwire_init(void *config)
 {
-    config_t *config = (config_t *)cfg;
-    interface_config_t *interface_config = (interface_config_t *)config->interface_config;
+    config_t *c = config;
+    interface_config_t *interface_config = (interface_config_t *)c->interface_config;
     
     int ret = vwire_json_load(interface_config);
     if (ret) {
@@ -99,10 +99,10 @@ int vwire_init(__rte_unused void* cfg)
     return 0;
 }
 
-int vwire_pair(void *cfg, uint16_t port_id)
+int vwire_pair(void *config, uint16_t port_id)
 {
-    config_t *config = cfg;
-    interface_config_t *interface_config = config->interface_config;
+    config_t *c = config;
+    interface_config_t *interface_config = c->interface_config;
     vwire_config_t *vwire_config;
     int i;
 

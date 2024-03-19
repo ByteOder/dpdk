@@ -11,8 +11,6 @@
 #include "interface.h"
 #include "vwire.h"
 
-interface_config_t interface_config;
-
 struct rte_eth_conf g_port_conf = {
     .rxmode = {
         .split_hdr_size = 0,
@@ -36,6 +34,7 @@ MODULE_DECLARE(interface) = {
 static int
 interface_json_load(config_t *config)
 {
+    interface_config_t *itfc = config->interface_config;
     json_object *jr = NULL, *ja;
     int i, interface_num;
     int ret = 0;
@@ -63,7 +62,7 @@ interface_json_load(config_t *config)
 
     for (i = 0; i < interface_num; i++) {
         json_object *jo, *jv;
-        port_config_t *port_config = &interface_config.ports[i];
+        port_config_t *port_config = &itfc->ports[i];
         jo = JO(ja, i);
 
         INTF_JV("id");
@@ -81,22 +80,19 @@ interface_json_load(config_t *config)
         printf("port %u type %u bus %s mac %s\n",
             port_config->id, port_config->type, port_config->bus, port_config->mac);
 
-        interface_config.port_num ++;
+        itfc->port_num ++;
     }
 
     #undef INTF_JV
 
-    interface_config.priv = config;
-
 done:
     if (jr) JR_FREE(jr);
-    if (ret == 0) config->interface_config = &interface_config;
     return ret;
 }
 
-int interface_init(__rte_unused void* cfg)
+int interface_init(void *config)
 {
-    config_t *config = (config_t *)cfg;
+    config_t *c = config;
     struct rte_eth_dev_info dev_info;
     uint16_t portid, rx_queues, tx_queues, i;
     uint16_t nb_rx_desc = 1024;
@@ -105,16 +101,25 @@ int interface_init(__rte_unused void* cfg)
 
     if (interface.log) {
         if (rte_log_init(interface.logf, MOD_ID_INTERFACE, RTE_LOG_ERR)) {
-            rte_exit(EXIT_FAILURE, "interface init rte log error");
+            printf("interface init rte log failed\n");
+            return -1;
         }
     }
 
-    if (interface_json_load(config)) {
-        rte_exit(EXIT_FAILURE, "interface json load error");
+    c->interface_config = malloc(sizeof(interface_config_t));
+    if (!c->interface_config) {
+        printf("alloc interface config failed\n");
+        return -1;
     }
 
-    if (vwire_init(cfg)) {
-        rte_exit(EXIT_FAILURE, "vwire init error");
+    if (interface_json_load(c)) {
+        printf("interface json load failed\n");
+        return -1;
+    }
+
+    if (vwire_init(c)) {
+        printf("vwire init failed\n");
+        return -1;
     }
 
     rx_queues = tx_queues = 0;
@@ -122,25 +127,26 @@ int interface_init(__rte_unused void* cfg)
     RTE_ETH_FOREACH_DEV(portid) {
         ret = rte_eth_dev_info_get(portid, &dev_info);
         if (ret) {
-            rte_exit(EXIT_FAILURE, "get dev info failed");
+            printf("rte eth dev info get failed\n");
+            return -1;
         }
 
-        if (dev_info.max_rx_queues > config->worker_num) {
-            rx_queues = config->worker_num;
+        if (dev_info.max_rx_queues > c->worker_num) {
+            rx_queues = c->worker_num;
         } else {
             rx_queues = dev_info.max_rx_queues;
         }
 
-        if (dev_info.max_tx_queues > config->worker_num) {
-            tx_queues = config->worker_num;
+        if (dev_info.max_tx_queues > c->worker_num) {
+            tx_queues = c->worker_num;
         } else {
             tx_queues = dev_info.max_tx_queues;
         }
 
         ret = rte_eth_dev_configure(portid, rx_queues, tx_queues, &g_port_conf);
         if (ret < 0) {
-            rte_exit(EXIT_FAILURE, "config eth dev failed errcode %d id %u\n",
-                ret, portid);
+            printf("rte eth dev configure failed errcode %d id %u\n", ret, portid);
+            return -1;
         }
 
         uint16_t rxds = nb_rx_desc * rx_queues;
@@ -148,16 +154,16 @@ int interface_init(__rte_unused void* cfg)
 
         ret = rte_eth_dev_adjust_nb_rx_tx_desc(portid, &rxds, &txds);
         if (ret < 0) {
-            rte_exit(EXIT_FAILURE, "setup rx tx desc failed errcode %d port=%u\n",
-                ret, portid);
+            printf("rte eth dev adjust nb rx tx desc failed errcode %d port=%u\n", ret, portid);
+            return -1;
         }
 
         for (i = 0; i < rx_queues; i++) {
             ret = rte_eth_rx_queue_setup(portid, i, nb_rx_desc, rte_eth_dev_socket_id(portid),
-                &dev_info.default_rxconf, config->pktmbuf_pool);
+                &dev_info.default_rxconf, c->pktmbuf_pool);
             if (ret < 0) {
-                rte_exit(EXIT_FAILURE, "setup rx queue failed errcode %d port %u\n",
-                      ret, portid);
+                printf("rte eth rx queue setup failed errcode %d port %u\n", ret, portid);
+                return -1;
             }
         }
 
@@ -165,49 +171,28 @@ int interface_init(__rte_unused void* cfg)
             ret = rte_eth_tx_queue_setup(portid, i, nb_tx_desc, rte_eth_dev_socket_id(portid),
                 &dev_info.default_txconf);
             if (ret < 0) {
-                rte_exit(EXIT_FAILURE, "setup tx queue failed errcode %d port=%u\n",
-                    ret, portid);
+                printf("rte eth tx queue setup failed errcode %d port=%u\n", ret, portid);
+                return -1;
             }
         }
 
         ret = rte_eth_dev_set_ptypes(portid, RTE_PTYPE_UNKNOWN, NULL, 0);
         if (ret < 0) {
-            printf("Port %u, Failed to disable Ptype parsing\n",
-                    portid);
+            printf("rte eth dev set ptypes failed\n");
+            return -1;
         }
 
         ret = rte_eth_dev_start(portid);
         if (ret < 0) {
-            rte_exit(EXIT_FAILURE, "rte eth dev start errcode %d port %u\n", ret, portid);
+            printf("rte eth dev start failed errcode %d port %u\n", ret, portid);
+            return -1;
         }
 
-        if (config->promiscuous) {
+        if (c->promiscuous) {
             ret = rte_eth_promiscuous_enable(portid);
             if (ret != 0) {
-                rte_exit(EXIT_FAILURE,
-                    "rte eth promiscuous enable errcode %s port %u\n", rte_strerror(-ret), portid);
-            }
-        }
-
-        struct rte_ether_addr mac1, mac2;       
-        memset(&mac1, 0, sizeof(struct rte_ether_addr));
-        memset(&mac2, 0, sizeof(struct rte_ether_addr));
-        
-        if (rte_eth_macaddr_get(portid, &mac1)) {
-                rte_exit(EXIT_FAILURE,
-                    "rte eth macaddr get errcode %s port %u\n", rte_strerror(-ret), portid);
-        }
-
-        if (portid < interface_config.port_num) {
-            ret = rte_ether_unformat_addr(interface_config.ports[portid].mac, &mac2);
-            if (ret) {
-                rte_exit(EXIT_FAILURE,
-                    "rte eth unformat addr errorcode %s port %u\n", rte_strerror(-ret), portid);
-            }
-
-            if (!rte_is_same_ether_addr(&mac1, &mac2)) {
-                rte_exit(EXIT_FAILURE,
-                    "rte eth unformat addr errorcode %s port %u\n", rte_strerror(-ret), portid);
+                printf("rte eth promiscuous enable failed errcode %s port %u\n", rte_strerror(-ret), portid);
+                return -1;
             }
         }
     }
@@ -216,13 +201,11 @@ int interface_init(__rte_unused void* cfg)
 }
 
 static int
-interface_proc_recv(void)
+interface_proc_recv(config_t *config)
 {
     struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
     packet_t *p;
     int i, nb_rx, portid, queueid;
-
-    config_t *config = (config_t *)interface_config.priv;
 
     RTE_ETH_FOREACH_DEV(portid) {
         for (queueid = 0; queueid < config->worker_num; queueid ++) {
@@ -250,10 +233,10 @@ interface_proc_recv(void)
 }
 
 static int
-interface_proc_prerouting(struct rte_mbuf *mbuf)
+interface_proc_prerouting(config_t *config, struct rte_mbuf *mbuf)
 {
     packet_t *p = rte_mbuf_to_priv(mbuf);
-    config_t *config = interface_config.priv;
+    interface_config_t *itfc = config->interface_config;
     uint16_t portid;
 
     if (!p) {
@@ -263,7 +246,7 @@ interface_proc_prerouting(struct rte_mbuf *mbuf)
     }
 
     portid = p->iport;
-    switch (interface_config.ports[portid].type) {
+    switch (itfc->ports[portid].type) {
         case PORT_TYPE_VWIRE:
             p->oport = vwire_pair(config, portid);
             break;
@@ -275,12 +258,10 @@ interface_proc_prerouting(struct rte_mbuf *mbuf)
 }
 
 static int
-interface_proc_send(void)
+interface_proc_send(config_t *config)
 {
     struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
     int nb_tx, tx, portid, queueid;
-
-    config_t *config = (config_t *)interface_config.priv;
 
     for (portid = 0; portid < config->port_num; portid ++) {
         for (queueid = 0; queueid < config->worker_num; queueid ++) {
@@ -306,27 +287,21 @@ interface_proc_send(void)
 }
 
 
-mod_ret_t interface_proc(__rte_unused struct rte_mbuf *mbuf, mod_hook_t hook)
+mod_ret_t interface_proc(void *config, struct rte_mbuf *mbuf, mod_hook_t hook)
 {
     if (hook == MOD_HOOK_RECV) {
-        interface_proc_recv();
+        interface_proc_recv(config);
     }
 
     if (hook == MOD_HOOK_PREROUTING) {
-        interface_proc_prerouting(mbuf);
+        interface_proc_prerouting(config, mbuf);
     }
 
     if (hook == MOD_HOOK_SEND) {
-        interface_proc_send();
+        interface_proc_send(config);
     }
 
     return MOD_RET_ACCEPT;
-}
-
-void interface_list(void)
-{
-    printf("interface list\n");
-    return;
 }
 
 // file-format: utf-8

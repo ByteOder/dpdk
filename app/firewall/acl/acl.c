@@ -10,8 +10,6 @@
 
 #include "acl.h"
 
-struct rte_acl_ctx *m_acl_ctx;
-
 struct rte_acl_field_def acl_field_def[5] = {
     {
         .type = RTE_ACL_FIELD_TYPE_BITMASK,
@@ -83,10 +81,16 @@ MODULE_DECLARE(acl) = {
 static int
 acl_rule_load(config_t *config)
 {
+    struct rte_acl_ctx *acl_ctx;
     char *p = NULL;
     json_object *jr = NULL, *ja;
     int i, rule_num;
     int ret = 0;
+
+    acl_ctx = config->acl_ctx;
+    if (!acl_ctx) {
+        return -1;
+    }
 
     jr = JR(CONFIG_PATH, "acl.json");
     if (!jr) {
@@ -170,24 +174,15 @@ acl_rule_load(config_t *config)
 
     #undef ACL_JV
 
-    if (!m_acl_ctx) {
-        m_acl_ctx = rte_acl_create(&acl_param);
-        if (!m_acl_ctx) {
-            printf("create acl ctx failed\n");
-            ret = -1;
-            goto done;
-        }
-    }
-
     if (rule_num) {
-        if (rte_acl_add_rules(m_acl_ctx, (const struct rte_acl_rule *)r, rule_num)) {
+        if (rte_acl_add_rules(acl_ctx, (const struct rte_acl_rule *)r, rule_num)) {
             printf("add acl rules failed\n");
             ret = -1;
             goto done;
         }
 
         memcpy(acl_cfg.defs, acl_field_def, sizeof(struct rte_acl_field_def) * RTE_DIM(acl_field_def));
-        if (rte_acl_build(m_acl_ctx, &acl_cfg)) {
+        if (rte_acl_build(acl_ctx, &acl_cfg)) {
             printf("build acl rules failed\n");
             ret = -1;
             goto done;
@@ -196,13 +191,6 @@ acl_rule_load(config_t *config)
 
 done:
     if (jr) JR_FREE(jr);
-
-    if (ret) {
-        config->acl_ctx = NULL;
-    } else {
-        config->acl_ctx = m_acl_ctx;
-    }
-
     return ret;
 }
 
@@ -270,11 +258,12 @@ acl_show(struct cli_def *cli, const char *command, char *argv[], int argc)
 static int 
 acl_dump(struct cli_def *cli, const char *command, char *argv[], int argc) 
 {
+    config_t *c = cli_get_context(cli);
     char buffer[2048] = {0};
 
     CLI_PRINT(cli, "command %s argv[0] %s argc %d", command, argv[0], argc);
 
-    _rte_acl_dump(m_acl_ctx, buffer);
+    _rte_acl_dump(c->acl_ctx, buffer);
     CLI_PRINT(cli, "%s", buffer);
     return 0;
 }
@@ -491,33 +480,49 @@ acl_cli_register(config_t *config)
     CLI_OPT(c1, "enabled", "switch of rule");
 }
 
-int acl_init(__rte_unused void* cfg)
+int acl_init(void *config)
 {
+    config_t *c = config;
+    
+    c->acl_ctx = rte_acl_create(&acl_param);
+    if (!c->acl_ctx) {
+        printf("create acl ctx failed\n");
+        return -1;
+    }
+
     if (acl.log) {
         if (rte_log_init(acl.logf, MOD_ID_ACL, RTE_LOG_DEBUG)) {
-            rte_exit(EXIT_FAILURE, "acl init rte log error");
+            printf("acl log init failed\n");
+            return -1;
         }
     }
 
-    if (acl_rule_load(cfg)) {
-        rte_exit(EXIT_FAILURE, "acl rule load error");
+    if (acl_rule_load(config)) {
+        printf("acl rule load failed\n");
+        return -1;
     }
 
-    acl_cli_register(cfg);
+    acl_cli_register(config);
 
     return 0;
 }
 
 static mod_ret_t 
-acl_proc_ingress(struct rte_mbuf *mbuf)
+acl_proc_ingress(config_t *config, struct rte_mbuf *mbuf)
 {
     rte_log_f(RTE_LOG_DEBUG, MOD_ID_ACL, "== acl proc ingress\n");
 
+    struct rte_acl_ctx *acl_ctx;
     struct rte_acl_rule_data *data;
     packet_t *p;
     ip4_tuple_t *k;
     uint32_t r;
     int ret;
+
+    acl_ctx = config->acl_ctx;
+    if (!acl_ctx) {
+        goto done;
+    }
 
     p = rte_mbuf_to_priv(mbuf);
     if (!p) {
@@ -526,7 +531,7 @@ acl_proc_ingress(struct rte_mbuf *mbuf)
 
     k = &p->tuple.v4;
 
-    ret = rte_acl_classify(m_acl_ctx, (const unsigned char **)&k, &r, 1, 1);
+    ret = rte_acl_classify(acl_ctx, (const unsigned char **)&k, &r, 1, 1);
     if (ret) {
         goto done;
     }
@@ -539,7 +544,7 @@ acl_proc_ingress(struct rte_mbuf *mbuf)
         goto done;
     }
 
-    data = rte_acl_rule_data(m_acl_ctx, r);
+    data = rte_acl_rule_data(acl_ctx, r);
     if (!data) {
         rte_log_f(RTE_LOG_DEBUG, MOD_ID_ACL, "illegal acl rule id\n");
         goto done;
@@ -557,10 +562,10 @@ done:
     return MOD_RET_ACCEPT;
 }
 
-mod_ret_t acl_proc(struct rte_mbuf *mbuf, mod_hook_t hook)
+mod_ret_t acl_proc(void *config, struct rte_mbuf *mbuf, mod_hook_t hook)
 {
     if (hook == MOD_HOOK_INGRESS) {
-        return acl_proc_ingress(mbuf);
+        return acl_proc_ingress(config, mbuf);
     }
 
     return MOD_RET_ACCEPT;

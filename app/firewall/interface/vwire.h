@@ -11,8 +11,8 @@ typedef struct {
 
 #define VWIRE_VALID_PORTID(i) ((i < interface_config->port_num) && (interface_config->ports[i].type == PORT_TYPE_VWIRE))
 
-int vwire_init(__rte_unused void* cfg);
-int vwire_pair(void* cfg, uint16_t port_id);
+int vwire_init(void *config);
+int vwire_pair(void *config, uint16_t port_id);
 
 #endif
 

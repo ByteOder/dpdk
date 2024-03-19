@@ -77,7 +77,7 @@ error:
  * */
 int RX(__rte_unused config_t *config)
 {
-    modules_proc(NULL, MOD_HOOK_RECV);
+    modules_proc(config, NULL, MOD_HOOK_RECV);
     return 0;
 }
 
@@ -86,7 +86,7 @@ int RX(__rte_unused config_t *config)
  * */
 int TX(__rte_unused config_t *config)
 {
-    modules_proc(NULL, MOD_HOOK_SEND);
+    modules_proc(config, NULL, MOD_HOOK_SEND);
     return 0;
 }
 
@@ -118,7 +118,7 @@ int WORKER(config_t *config)
     }
 
     for (hook = MOD_HOOK_INGRESS; hook <= MOD_HOOK_EGRESS; hook ++) {
-        if (modules_proc(mbuf, hook)) {
+        if (modules_proc(config, mbuf, hook)) {
             return 0;
         }
     }

@@ -26,10 +26,8 @@ typedef struct {
     void *priv;
 } interface_config_t;
 
-int interface_init(__rte_unused void* cfg);
-mod_ret_t interface_proc(__rte_unused struct rte_mbuf *mbuf, mod_hook_t hook);
-
-void interface_list(void);
+int interface_init(void *config);
+mod_ret_t interface_proc(void *config, struct rte_mbuf *mbuf, mod_hook_t hook);
 
 #endif
 

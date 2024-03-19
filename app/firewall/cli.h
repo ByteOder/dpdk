@@ -56,8 +56,8 @@
     cli_print(cli, fmt, ##__VA_ARGS__)
 
 
-int _cli_init(void *cfg);
-int _cli_run(void);
+int _cli_init(void *config);
+int _cli_run(void *config);
 
 #endif
 

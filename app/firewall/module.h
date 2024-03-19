@@ -56,8 +56,8 @@ typedef enum {
 /**
  * module function.
  * */
-typedef mod_ret_t (*mod_func_t)(struct rte_mbuf *mbuf, mod_hook_t hook);
-typedef int (*mod_init_t)(__rte_unused void* cfg);
+typedef mod_ret_t (*mod_func_t)(void *config, struct rte_mbuf *mbuf, mod_hook_t hook);
+typedef int (*mod_init_t)(void *config);
 
 
 /**
@@ -111,7 +111,7 @@ do { \
  * */
 int modules_load(void);
 int modules_init(void *config);
-int modules_proc(struct rte_mbuf *pkt, mod_hook_t hook);
+int modules_proc(void *config, struct rte_mbuf *pkt, mod_hook_t hook);
 
 #endif
 
