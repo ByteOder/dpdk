@@ -24,6 +24,7 @@ typedef struct {
     int rtx_core;
     int rtx_worker_core;
     void *cli_def;
+    void *cli_show;
     int cli_sockfd;
     void *rx_queues[MAX_WORKER_NUM];
     void *tx_queues[MAX_PORT_NUM][MAX_QUEUE_NUM];

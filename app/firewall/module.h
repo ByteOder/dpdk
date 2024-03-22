@@ -58,6 +58,7 @@ typedef enum {
  * */
 typedef mod_ret_t (*mod_func_t)(void *config, struct rte_mbuf *mbuf, mod_hook_t hook);
 typedef int (*mod_init_t)(void *config);
+typedef int (*mod_conf_t)(void *config);
 
 
 /**
@@ -73,8 +74,9 @@ typedef struct {
     const char *logf;           /** log file path */
     mod_init_t init;            /** init function */
     mod_func_t proc;            /** process function */
+    mod_conf_t conf;            /** config function */
     void *priv;                 /** private use */
-    char reserved[20];          /** reserved */
+    char reserved[12];          /** reserved */
 } module_t;
 
 #pragma pack()
@@ -112,6 +114,7 @@ do { \
 int modules_load(void);
 int modules_init(void *config);
 int modules_proc(void *config, struct rte_mbuf *pkt, mod_hook_t hook);
+int modules_conf(void *config);
 
 #endif
 

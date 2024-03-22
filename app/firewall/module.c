@@ -41,6 +41,25 @@ int modules_init(void *config)
     return 0;
 }
 
+int modules_conf(void *config)
+{
+    printf("modules conf\n");
+
+    __rte_unused module_t *m;
+    __rte_unused int id;
+
+    MODULE_FOREACH(m, id) {
+        if (m && m->conf && m->enabled) {
+            printf("[%d] %s conf\n", id, m->name);
+            if (m->conf(config)) {
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
 int modules_proc(void *config, struct rte_mbuf *pkt, mod_hook_t hook)
 {
     module_t *m;

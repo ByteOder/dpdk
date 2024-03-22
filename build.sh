@@ -28,8 +28,14 @@ for dir in ${MODULE_PATH}/*; do
 done
 cd ${WORK_PATH}
 
-# build all examples
-meson -Dexamples=all build
+# build all examples use -Dexamples=all
+
+if [ $1 == "debug" ]; then
+    meson -Dexamples=helloworld -Dbuildtype=debug build
+else
+    meson -Dexamples=helloworld build
+fi
+
 ninja -C build
 
 # build kernel module

@@ -60,12 +60,21 @@ struct rte_acl_config acl_cfg = {
 
 RTE_ACL_RULE_DEF(acl_rule, RTE_DIM(acl_field_def));
 
-struct rte_acl_param acl_param = {
-    .name = "acl param",
+struct rte_acl_param acl_param_A = {
+    .name = "param_A",
     .socket_id = SOCKET_ID_ANY,
     .rule_size = RTE_ACL_RULE_SZ(RTE_DIM(acl_field_def)),
     .max_rule_num = MAX_ACL_RULE_NUM,
 };
+
+struct rte_acl_param acl_param_B = {
+    .name = "param_B",
+    .socket_id = SOCKET_ID_ANY,
+    .rule_size = RTE_ACL_RULE_SZ(RTE_DIM(acl_field_def)),
+    .max_rule_num = MAX_ACL_RULE_NUM,
+};
+
+struct rte_acl_param *acl_param;
 
 MODULE_DECLARE(acl) = {
     .name = "acl",
@@ -75,6 +84,7 @@ MODULE_DECLARE(acl) = {
     .logf = "/opt/firewall/log/acl.log",
     .init = acl_init,
     .proc = acl_proc,
+    .conf = acl_conf,
     .priv = NULL
 };
 
@@ -480,21 +490,17 @@ acl_cli_register(config_t *config)
     CLI_OPT(c1, "enabled", "switch of rule");
 }
 
-int acl_init(void *config)
+int acl_conf(void *config)
 {
     config_t *c = config;
+
+    if (!acl_param) acl_param = &acl_param_A;
+    else acl_param = (acl_param == &acl_param_A) ? &acl_param_B : &acl_param_A;
     
-    c->acl_ctx = rte_acl_create(&acl_param);
+    c->acl_ctx = rte_acl_create(acl_param);
     if (!c->acl_ctx) {
         printf("create acl ctx failed\n");
         return -1;
-    }
-
-    if (acl.log) {
-        if (rte_log_init(acl.logf, MOD_ID_ACL, RTE_LOG_DEBUG)) {
-            printf("acl log init failed\n");
-            return -1;
-        }
     }
 
     if (acl_rule_load(config)) {
@@ -502,6 +508,23 @@ int acl_init(void *config)
         return -1;
     }
 
+    return 0;
+}
+
+int acl_init(void *config)
+{
+    if (acl.log) {
+        if (rte_log_init(acl.logf, MOD_ID_ACL, RTE_LOG_DEBUG)) {
+            printf("rte log init failed\n");
+            return -1;
+        }
+    }
+
+    if (acl_conf(config)) {
+        printf("acl conf failed\n");
+        return -1;
+    }
+    
     acl_cli_register(config);
 
     return 0;

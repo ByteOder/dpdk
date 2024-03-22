@@ -20,7 +20,7 @@
 #include "interface/interface.h"
 
 extern config_t config_A, config_B;
-extern int _config_I[MAX_WORKER_NUM];
+extern int _config_I[MAX_WORKER_NUM], config_I;
 
 config_t *m_cfg = &config_A;
 __thread config_t *_m_cfg;
@@ -38,10 +38,24 @@ signal_handler(int signum)
 }
 
 static int
+cli_show_conf(struct cli_def *cli, const char *command, char *argv[], int argc) 
+{
+    CLI_PRINT(cli, "command %s argv[0] %s argc %d", command, argv[0], argc);
+
+    config_t *c = cli_get_context(cli);
+    CLI_PRINT(cli, "working with config %s\n", (c == &config_A) ? "A" : "B");
+    CLI_PRINT(cli, "indicator [%d %d %d %d %d %d %d %d] %d\n", 
+        _config_I[0], _config_I[1], _config_I[2], _config_I[3],
+        _config_I[4], _config_I[5], _config_I[6], _config_I[7], config_I);
+    return 0;
+}
+
+static int
 main_loop(__rte_unused void *arg)
 {
     int lcore_id = rte_lcore_id();
     _m_cfg = (config_t *)arg;
+    _config_I[lcore_id] = 0;
 
     while (!force_quit) {
         if (_m_cfg->switch_mark) {
@@ -64,12 +78,21 @@ mgmt_loop(__rte_unused config_t *c)
     config_t *_c = c;
 
     while (!force_quit) {
+        /** When a reload mark set, a config switch process started, included steps below:
+         * 1. reload config into 'free' one, eg. working with _A now then reload witch _B
+         * 2. tell worker to switch config. eg. working with _A now then switch to _B
+         * 3. wait all worker switch config done, switch config of it's own(sync by config indicator)
+         * 4. update user context of cli for exist terminal(it is safe cause cli def never changed)
+         * */
         if (_c->reload_mark) {
             if (config_reload(_c)) {
+                _c->reload_mark = 0;
+                _c->switch_mark = 1;
                 _c = config_switch(_c, -1);
+                cli_set_context(_c->cli_def, _c);
             }
         }
-        _cli_run(c);
+        _cli_run(_c);
     }
 }
 
@@ -186,6 +209,8 @@ int main(int argc, char **argv)
     if (ret) {
         rte_exit(EXIT_FAILURE, "cli init erorr\n");
     }
+
+    CLI_CMD_C(m_cfg->cli_def, m_cfg->cli_show, "config", cli_show_conf, "global configuration");
 
     /**
      * modules register and initialize

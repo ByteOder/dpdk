@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/select.h>
+#include <pthread.h>
 
 #include "config.h"
 #include "cli.h"
@@ -50,6 +51,15 @@ cli_idle_timeout(struct cli_def *cli)
     return CLI_QUIT;
 }
 
+static int 
+cli_save_conf(struct cli_def *cli, const char *command, char *argv[], int argc) 
+{
+    CLI_PRINT(cli, "command %s argv[0] %s argc %d", command, argv[0], argc);
+    config_t *c = cli_get_context(cli);
+    c->reload_mark = 1;
+    return 0;
+}
+
 int _cli_init(void *config)
 {
     config_t *c = (config_t *)config;
@@ -63,7 +73,7 @@ int _cli_init(void *config)
     "     |  |   |  | |  | \\/\\  ___/ \\     /  / __ \\_|  |__|  |__\n"
     "     |__|   |__| |__|    \\___  > \\/\\_/  (____  /|____/|____/\n"
     "                             \\/              \\/\n"
-    "=====================================================================\n";
+    "=====================================================================";
 
     if (c->cli_def || c->cli_sockfd) {
         return -1;
@@ -79,6 +89,9 @@ int _cli_init(void *config)
     cli_set_auth_callback(c->cli_def, cli_check_auth);
     cli_set_enable_callback(c->cli_def, cli_check_enable);
     cli_set_context(c->cli_def, c);
+
+    CLI_CMD_C(c->cli_def, NULL, "save", cli_save_conf, "save and reload configuration");
+    c->cli_show = CLI_CMD_C(c->cli_def, NULL, "show", NULL, "show application inner state");
 
     if ((c->cli_sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket");
@@ -107,12 +120,28 @@ int _cli_init(void *config)
     return 0;
 }
 
+static void *_cli_loop(void *arg)
+{
+    struct params {
+        int _x;
+        void *_c;
+    } *p = arg;
+
+    config_t *c = p->_c;
+    int x = p->_x;
+    
+    cli_loop(c->cli_def, x);
+    close(x);
+    pthread_exit(NULL);
+}
+
 int _cli_run(void *config)
 {
     config_t *c = config;
+    pthread_t thread_id;
     struct timeval timeout;
     fd_set fds;
-    int r, x;
+    int x, r;
 
     timeout.tv_sec = 10;
     timeout.tv_usec = 0;
@@ -130,8 +159,14 @@ int _cli_run(void *config)
 
     x = accept(c->cli_sockfd, NULL, 0);
     if (x > 0) {
-        cli_loop(c->cli_def, x);
-        close(x);
+        struct params {
+            int _x;
+            void *_c;
+        } p;
+        p._x = x;
+        p._c = c;
+        pthread_create(&thread_id, NULL, _cli_loop, &p);
+        pthread_detach(thread_id);
     }
 
     return 0;
