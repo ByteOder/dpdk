@@ -10,9 +10,8 @@
 #include "module.h"
 #include "packet.h"
 
-/**
- * mbuf flow between RX, WORKER, TX:
- * 
+/** Mbuf flow between RX, WORKER, TX:
+ * ===========================================================
  *             RX               WORKER             TX
  *   ^---queue1----------v                ^--> port1-queue1
  * port1           >----->----> queue1----v
@@ -22,11 +21,11 @@
  * port2                    >-> queue2-|
  *   v---queue2-------------^          >-----> port2-queue2
  * ...
+ * ===========================================================
  * */
 
 int worker_init(config_t *config)
 {
-    printf("worker init ...\n");
     char qname[128];
     int i, j;
     
@@ -72,27 +71,18 @@ error:
     return -1;
 }
 
-/** 
- * recv pkts then push to worker's rx queue 
- * */
 int RX(__rte_unused config_t *config)
 {
     modules_proc(config, NULL, MOD_HOOK_RECV);
     return 0;
 }
 
-/**
- * pop pkts from worker's tx queue and send
- * */
 int TX(__rte_unused config_t *config)
 {
     modules_proc(config, NULL, MOD_HOOK_SEND);
     return 0;
 }
 
-/**
- * do both RX() and TX() in one lcore
- * */
 int RTX(config_t *config)
 {
     RX(config);
@@ -100,11 +90,6 @@ int RTX(config_t *config)
     return 0;
 }
 
-/**
- * 1、 pop mbuf from worker's rx queue
- * 2、 handle the mbuf
- * 3、 push the handled mbuf to worker's tx queue
- * */
 int WORKER(config_t *config)
 {
     struct rte_mbuf *mbuf;
@@ -139,9 +124,6 @@ int WORKER(config_t *config)
     return 0;
 }
 
-/**
- * do all in one lcore
- * */
 int RTX_WORKER(config_t *config)
 {
     RX(config);

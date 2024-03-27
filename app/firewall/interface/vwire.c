@@ -4,14 +4,14 @@
 #include "vwire.h"
 
 static int
-vwire_json_load(interface_config_t *interface_config)
+vwire_json_load(interface_config_t *itf_cfg)
 {
     json_object *jr = NULL, *ja;
     int i, vwire_pairs_num;
     vwire_config_t *vwire_pairs_mem = NULL;
     int ret = 0;
 
-    if (!interface_config) {
+    if (!itf_cfg) {
         ret = -1;
         goto done;
     }
@@ -62,10 +62,7 @@ vwire_json_load(interface_config_t *interface_config)
             goto done;
         }
 
-        printf("vwire pair %u port1 %u port2 %u\n",
-            vwire_config->id, vwire_config->port1, vwire_config->port2);
-
-        interface_config->vwire_pair_num ++;
+        itf_cfg->vwire_pair_num ++;
     }
 
     #undef VWIRE_JV
@@ -76,10 +73,10 @@ done:
     if (ret) {
         if (vwire_pairs_mem) {
             free(vwire_pairs_mem);
-            interface_config->vwire_pair_num = 0;
+            itf_cfg->vwire_pair_num = 0;
         }
     } else {
-        interface_config->vwire_pairs = vwire_pairs_mem;
+        itf_cfg->vwire_pairs = vwire_pairs_mem;
     }
 
     return ret;
@@ -88,9 +85,9 @@ done:
 int vwire_init(void *config)
 {
     config_t *c = config;
-    interface_config_t *interface_config = (interface_config_t *)c->interface_config;
+    interface_config_t *itf_cfg = (interface_config_t *)c->itf_cfg;
     
-    int ret = vwire_json_load(interface_config);
+    int ret = vwire_json_load(itf_cfg);
     if (ret) {
         rte_exit(EXIT_FAILURE, "vwire json load error");
         return ret; 
@@ -102,12 +99,12 @@ int vwire_init(void *config)
 int vwire_pair(void *config, uint16_t port_id)
 {
     config_t *c = config;
-    interface_config_t *interface_config = c->interface_config;
+    interface_config_t *itf_cfg = c->itf_cfg;
     vwire_config_t *vwire_config;
     int i;
 
-    for (i = 0; i < interface_config->vwire_pair_num; i++) {
-        vwire_config = (vwire_config_t *)interface_config->vwire_pairs + i;
+    for (i = 0; i < itf_cfg->vwire_pair_num; i++) {
+        vwire_config = (vwire_config_t *)itf_cfg->vwire_pairs + i;
         if (vwire_config) {
             if (port_id == vwire_config->port1) {
                 return vwire_config->port2;

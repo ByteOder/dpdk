@@ -73,6 +73,10 @@ extern "C" {
 #define RTE_LOG_DEBUG    8U  /**< Debug-level messages.             */
 #define RTE_LOG_MAX RTE_LOG_DEBUG /**< Most detailed log level.     */
 
+#define M_LOG(c, l, t, fmt, ...) if (c) _rte_log(l, t, fmt, ##__VA_ARGS__)
+
+int _rte_log_init(const char *fname, uint32_t level);
+
 /**
  * Change the stream that will be used by the logging system.
  *
@@ -87,9 +91,6 @@ extern "C" {
  *   - Negative on error.
  */
 int rte_openlog_stream(FILE *f);
-
-/* multi log stream support */
-int rte_log_init(const char *logpath, uint32_t logtype, uint32_t level);
 
 /**
  * Retrieve the stream used by the logging system (see rte_openlog_stream()
@@ -142,6 +143,9 @@ int rte_log_get_level(uint32_t logtype);
 __rte_experimental
 bool rte_log_can_log(uint32_t logtype, uint32_t loglevel);
 
+__rte_experimental
+bool _rte_log_can_log(__rte_unused uint32_t logtype, uint32_t loglevel);
+
 /**
  * Set the log level for a given type based on globbing pattern.
  *
@@ -177,9 +181,6 @@ int rte_log_set_level_regexp(const char *regex, uint32_t level);
  *   0 on success, a negative value if logtype or level is invalid.
  */
 int rte_log_set_level(uint32_t logtype, uint32_t level);
-
-/* multi log stream support */
-int rte_log_set_l(uint32_t logtype, uint32_t level);
 
 /**
  * Get the current loglevel for the message being processed.
@@ -296,14 +297,13 @@ int rte_log(uint32_t level, uint32_t logtype, const char *format, ...)
 #endif
 	__rte_format_printf(3, 4);
 
-/* multi log stream support */
-int rte_log_f(uint32_t level, uint32_t logtype, const char *format, ...)
+int _rte_log(uint32_t level, uint32_t logtype, const char *format, ...)
 #ifdef __GNUC__
 #if (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ > 2))
-    __rte_cold
+	__rte_cold
 #endif
 #endif
-    __rte_format_printf(3, 4);
+	__rte_format_printf(3, 4);
 
 /**
  * Generates a log message.
@@ -332,6 +332,9 @@ int rte_log_f(uint32_t level, uint32_t logtype, const char *format, ...)
  *   - Negative on error.
  */
 int rte_vlog(uint32_t level, uint32_t logtype, const char *format, va_list ap)
+	__rte_format_printf(3, 0);
+
+int _rte_vlog(uint32_t level, uint32_t logtype, const char *format, va_list ap)
 	__rte_format_printf(3, 0);
 
 /**

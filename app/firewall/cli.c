@@ -85,13 +85,13 @@ int _cli_init(void *config)
     cli_telnet_protocol(c->cli_def, 1);
     cli_regular(c->cli_def, cli_regular_callback);
     cli_regular_interval(c->cli_def, 5);
-    cli_set_idle_timeout_callback(c->cli_def, 60, cli_idle_timeout);
+    cli_set_idle_timeout_callback(c->cli_def, 300, cli_idle_timeout);
     cli_set_auth_callback(c->cli_def, cli_check_auth);
     cli_set_enable_callback(c->cli_def, cli_check_enable);
     cli_set_context(c->cli_def, c);
 
     CLI_CMD_C(c->cli_def, NULL, "save", cli_save_conf, "save and reload configuration");
-    c->cli_show = CLI_CMD_C(c->cli_def, NULL, "show", NULL, "show application inner state");
+    c->cli_show = CLI_CMD_C(c->cli_def, NULL, "show", NULL, "show system information");
 
     if ((c->cli_sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket");

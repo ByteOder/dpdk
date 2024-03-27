@@ -11,21 +11,11 @@
 #include "interface.h"
 #include "vwire.h"
 
-struct rte_eth_conf g_port_conf = {
-    .rxmode = {
-        .split_hdr_size = 0,
-    },
-    .txmode = {
-        .mq_mode = RTE_ETH_MQ_TX_NONE,
-    },
-};
-
 MODULE_DECLARE(interface) = {
     .name = "interface",
     .id = MOD_ID_INTERFACE,
     .enabled = true,
     .log = true,
-    .logf = "/opt/firewall/log/interface.log",
     .init = interface_init,
     .proc = interface_proc,
     .priv = NULL
@@ -34,7 +24,7 @@ MODULE_DECLARE(interface) = {
 static int
 interface_json_load(config_t *config)
 {
-    interface_config_t *itfc = config->interface_config;
+    interface_config_t *itfc = config->itf_cfg;
     json_object *jr = NULL, *ja;
     int i, interface_num;
     int ret = 0;
@@ -77,9 +67,6 @@ interface_json_load(config_t *config)
         INTF_JV("mac")
         sprintf(port_config->mac, "%s", JV_S(jv));
 
-        printf("port %u type %u bus %s mac %s\n",
-            port_config->id, port_config->type, port_config->bus, port_config->mac);
-
         itfc->port_num ++;
     }
 
@@ -93,21 +80,18 @@ done:
 int interface_init(void *config)
 {
     config_t *c = config;
+    struct rte_eth_conf port_conf;
     struct rte_eth_dev_info dev_info;
     uint16_t portid, rx_queues, tx_queues, i;
     uint16_t nb_rx_desc = 1024;
     uint16_t nb_tx_desc = 1024;
     int ret;
 
-    if (interface.log) {
-        if (rte_log_init(interface.logf, MOD_ID_INTERFACE, RTE_LOG_ERR)) {
-            printf("interface init rte log failed\n");
-            return -1;
-        }
-    }
+    port_conf.rxmode.split_hdr_size = 0;
+    port_conf.txmode.mq_mode = RTE_ETH_MQ_TX_NONE;
 
-    c->interface_config = malloc(sizeof(interface_config_t));
-    if (!c->interface_config) {
+    c->itf_cfg = malloc(sizeof(interface_config_t));
+    if (!c->itf_cfg) {
         printf("alloc interface config failed\n");
         return -1;
     }
@@ -143,9 +127,9 @@ int interface_init(void *config)
             tx_queues = dev_info.max_tx_queues;
         }
 
-        ret = rte_eth_dev_configure(portid, rx_queues, tx_queues, &g_port_conf);
+        ret = rte_eth_dev_configure(portid, rx_queues, tx_queues, &port_conf);
         if (ret < 0) {
-            printf("rte eth dev configure failed errcode %d id %u\n", ret, portid);
+            printf("rte eth dev configure failed\n");
             return -1;
         }
 
@@ -154,7 +138,7 @@ int interface_init(void *config)
 
         ret = rte_eth_dev_adjust_nb_rx_tx_desc(portid, &rxds, &txds);
         if (ret < 0) {
-            printf("rte eth dev adjust nb rx tx desc failed errcode %d port=%u\n", ret, portid);
+            printf("rte eth dev adjust nb rx tx desc failed\n");
             return -1;
         }
 
@@ -162,7 +146,7 @@ int interface_init(void *config)
             ret = rte_eth_rx_queue_setup(portid, i, nb_rx_desc, rte_eth_dev_socket_id(portid),
                 &dev_info.default_rxconf, c->pktmbuf_pool);
             if (ret < 0) {
-                printf("rte eth rx queue setup failed errcode %d port %u\n", ret, portid);
+                printf("rte eth rx queue setup failed\n");
                 return -1;
             }
         }
@@ -171,7 +155,7 @@ int interface_init(void *config)
             ret = rte_eth_tx_queue_setup(portid, i, nb_tx_desc, rte_eth_dev_socket_id(portid),
                 &dev_info.default_txconf);
             if (ret < 0) {
-                printf("rte eth tx queue setup failed errcode %d port=%u\n", ret, portid);
+                printf("rte eth tx queue setup failed\n");
                 return -1;
             }
         }
@@ -184,14 +168,14 @@ int interface_init(void *config)
 
         ret = rte_eth_dev_start(portid);
         if (ret < 0) {
-            printf("rte eth dev start failed errcode %d port %u\n", ret, portid);
+            printf("rte eth dev start failed\n");
             return -1;
         }
 
         if (c->promiscuous) {
             ret = rte_eth_promiscuous_enable(portid);
             if (ret != 0) {
-                printf("rte eth promiscuous enable failed errcode %s port %u\n", rte_strerror(-ret), portid);
+                printf("rte eth promiscuous enable failed\n");
                 return -1;
             }
         }
@@ -211,7 +195,7 @@ interface_proc_recv(config_t *config)
         for (queueid = 0; queueid < config->worker_num; queueid ++) {
             nb_rx = rte_eth_rx_burst(portid, queueid, pkts_burst, MAX_PKT_BURST);
             if (nb_rx) {
-                rte_log_f(RTE_LOG_DEBUG, MOD_ID_INTERFACE, "\nrecv %d pkt from %d-%d\n", nb_rx, portid, queueid);
+                M_LOG(interface.log, RTE_LOG_DEBUG, MOD_ID_INTERFACE, "\nrecv %d pkt from %d-%d\n", nb_rx, portid, queueid);
 
                 for (i = 0; i < nb_rx; i++) {
                     p = rte_mbuf_to_priv(pkts_burst[i]);
@@ -224,7 +208,7 @@ interface_proc_recv(config_t *config)
                  * enqueue must sucess.
                  * */
                 while (!rte_ring_enqueue_bulk(config->rx_queues[queueid], (void *const *)pkts_burst, nb_rx, NULL)) {;};
-                rte_log_f(RTE_LOG_DEBUG, MOD_ID_INTERFACE, "enqueue worker rx queue %d\n", queueid);
+                M_LOG(interface.log, RTE_LOG_DEBUG, MOD_ID_INTERFACE, "enqueue worker rx queue %d\n", queueid);
             }
         }
     }
@@ -236,11 +220,11 @@ static int
 interface_proc_prerouting(config_t *config, struct rte_mbuf *mbuf)
 {
     packet_t *p = rte_mbuf_to_priv(mbuf);
-    interface_config_t *itfc = config->interface_config;
+    interface_config_t *itfc = config->itf_cfg;
     uint16_t portid;
 
     if (!p) {
-        rte_log_f(RTE_LOG_ERR, MOD_ID_INTERFACE, "drop pkt which priv data is null\n");
+        M_LOG(interface.log, RTE_LOG_ERR, MOD_ID_INTERFACE, "drop pkt which priv data is null\n");
         rte_pktmbuf_free(mbuf);
         return -1;
     }
@@ -273,12 +257,12 @@ interface_proc_send(config_t *config)
             nb_tx = nb_tx > MAX_PKT_BURST ? MAX_PKT_BURST : nb_tx;
             nb_tx = rte_ring_dequeue_bulk(config->tx_queues[portid][queueid], (void **)pkts_burst, nb_tx, NULL);
             if (nb_tx) {
-                rte_log_f(RTE_LOG_DEBUG, MOD_ID_INTERFACE, "dequeue %d pkt from worker tx queue %d-%d\n", nb_tx, portid, queueid);
+                M_LOG(interface.log, RTE_LOG_DEBUG, MOD_ID_INTERFACE, "dequeue %d pkt from worker tx queue %d-%d\n", nb_tx, portid, queueid);
                 tx = rte_eth_tx_burst(portid, queueid, pkts_burst, nb_tx);
                 if (tx < nb_tx) {
-                    rte_log_f(RTE_LOG_ERR, MOD_ID_INTERFACE, "send failed %d pkts\n", nb_tx - tx);
+                    M_LOG(interface.log, RTE_LOG_ERR, MOD_ID_INTERFACE, "send failed %d pkts\n", nb_tx - tx);
                 }
-                rte_log_f(RTE_LOG_DEBUG, MOD_ID_INTERFACE, "send %d pkt to %d-%d\n", tx, portid, queueid);
+                M_LOG(interface.log, RTE_LOG_DEBUG, MOD_ID_INTERFACE, "send %d pkt to %d-%d\n", tx, portid, queueid);
             }
         }
     }

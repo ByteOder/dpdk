@@ -19,7 +19,6 @@ MODULE_DECLARE(decoder) = {
     .id = MOD_ID_DECODER,
     .enabled = true,
     .log = true,
-    .logf = "/opt/firewall/log/decoder.log",
     .init = decoder_init,
     .proc = decoder_proc,
     .priv = NULL
@@ -183,12 +182,6 @@ ptype_tunnel(uint16_t *proto, const struct rte_mbuf *mbuf,
 
 int decoder_init(__rte_unused void *config)
 {
-    if (decoder.log) {
-        if (rte_log_init(decoder.logf, MOD_ID_DECODER, RTE_LOG_DEBUG)) {
-            rte_exit(EXIT_FAILURE, "decoder init rte log error");
-        }
-    }
-
     return 0;
 }
 
@@ -204,19 +197,19 @@ decoder_proc_ingress(struct rte_mbuf *mbuf)
 
     p = rte_mbuf_to_priv(mbuf);
     if (!p) {
-        rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "rte mbuf to priv failed\n");
+        M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "rte mbuf to priv failed\n");
         goto error;
     }
 
 // L2:
     if (unlikely(rte_pktmbuf_data_len(mbuf) < sizeof(struct rte_ether_hdr))) {
-        rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+        M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
         goto error;
     }
 
     eh = rte_pktmbuf_mtod_offset(mbuf, struct rte_ether_hdr *, offset);
     if (unlikely(eh == NULL)) {
-        rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "ether header check failed\n");
+        M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "ether header check failed\n");
         goto error;
     }
 
@@ -235,13 +228,13 @@ decoder_proc_ingress(struct rte_mbuf *mbuf)
         pkt_type = RTE_PTYPE_L2_ETHER_VLAN;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(struct rte_vlan_hdr))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
         vh = rte_pktmbuf_mtod_offset(mbuf, struct rte_vlan_hdr *, offset);
         if (unlikely(vh == NULL)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "vlan header check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "vlan header check failed\n");
             goto error;
         }
 
@@ -253,13 +246,13 @@ decoder_proc_ingress(struct rte_mbuf *mbuf)
         pkt_type = RTE_PTYPE_L2_ETHER_QINQ;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(struct rte_vlan_hdr) * 2)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
         vh = rte_pktmbuf_mtod_offset(mbuf, struct rte_vlan_hdr *, offset + sizeof(*vh));
         if (unlikely(vh == NULL)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "vlan header check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "vlan header check failed\n");
             goto error;
         }
 
@@ -273,18 +266,18 @@ decoder_proc_ingress(struct rte_mbuf *mbuf)
 #define MAX_MPLS_HDR 5
         for (i = 0; i < MAX_MPLS_HDR; i++) {
             if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < i * sizeof(*mh))) {
-                rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+                M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
                 goto error;
             }
 
             mh = rte_pktmbuf_mtod_offset(mbuf, struct rte_mpls_hdr *, offset + (i * sizeof(*mh)));
             if (unlikely(mh == NULL)) {
-                rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "mpls header check failed\n");
+                M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "mpls header check failed\n");
                 goto error;
             }
         }
         if (i == MAX_MPLS_HDR) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "over max mpls header limit\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "over max mpls header limit\n");
             goto error;
         }
 
@@ -297,13 +290,13 @@ L3:
         const struct rte_ipv4_hdr *ip4h;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*ip4h))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
         ip4h = rte_pktmbuf_mtod_offset(mbuf, struct rte_ipv4_hdr *, offset);
         if (unlikely(ip4h == NULL)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "ipv4 header check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "ipv4 header check failed\n");
             goto error;
         }
 
@@ -327,13 +320,13 @@ L3:
         int frag = 0;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*ip6h))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
         ip6h = rte_pktmbuf_mtod_offset(mbuf, struct rte_ipv6_hdr *, offset);
         if (unlikely(ip6h == NULL)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "ipv6 header check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "ipv6 header check failed\n");
             goto error;
         }
 
@@ -349,7 +342,7 @@ L3:
         if ((pkt_type & RTE_PTYPE_L3_MASK) == RTE_PTYPE_L3_IPV6_EXT) {
             ret = rte_net_skip_ip6_ext(proto, mbuf, &offset, &frag);
             if (ret < 0) {
-                rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "skip ipv6 extensions failed\n");
+                M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "skip ipv6 extensions failed\n");
                 goto error;
             }
             proto = ret;
@@ -371,7 +364,7 @@ L3:
         const struct rte_udp_hdr *uh;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*uh))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
@@ -394,7 +387,7 @@ L3:
         const struct rte_tcp_hdr *th;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*th))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
@@ -417,7 +410,7 @@ L3:
         const struct rte_sctp_hdr *sh;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*sh))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
@@ -453,13 +446,13 @@ L3:
 // INNER_L2:
     if (proto == rte_cpu_to_be_16(RTE_ETHER_TYPE_TEB)) {
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*eh))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
         eh = rte_pktmbuf_mtod_offset(mbuf, struct rte_ether_hdr *, offset);
         if (unlikely(eh == NULL)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "ether header check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "ether header check failed\n");
             goto error;
         }
 
@@ -475,7 +468,7 @@ L3:
         const struct rte_vlan_hdr *vh;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*vh))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
@@ -484,7 +477,7 @@ L3:
 
         vh = rte_pktmbuf_mtod_offset(mbuf, struct rte_vlan_hdr *, offset);
         if (unlikely(vh == NULL)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "vlan header check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "vlan header check failed\n");
             goto error;
         }
 
@@ -494,7 +487,7 @@ L3:
         const struct rte_vlan_hdr *vh;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*vh) * 2)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
@@ -503,7 +496,7 @@ L3:
 
         vh = rte_pktmbuf_mtod_offset(mbuf, struct rte_vlan_hdr *, offset + sizeof(*vh));
         if (unlikely(vh == NULL)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "vlan header check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "vlan header check failed\n");
             return pkt_type;
         }
 
@@ -516,13 +509,13 @@ L3:
         const struct rte_ipv4_hdr *ip4h;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*ip4h))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
         ip4h = rte_pktmbuf_mtod_offset(mbuf, struct rte_ipv4_hdr *, offset);
         if (unlikely(ip4h == NULL)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "ipv4 header check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "ipv4 header check failed\n");
             goto error;
         }
 
@@ -546,13 +539,13 @@ L3:
         int frag = 0;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*ip6h))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
         ip6h = rte_pktmbuf_mtod_offset(mbuf, struct rte_ipv6_hdr *, offset);
         if (unlikely(ip6h == NULL)) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "ipv6 header check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "ipv6 header check failed\n");
             goto error;
         }
 
@@ -568,7 +561,7 @@ L3:
         if ((pkt_type & RTE_PTYPE_INNER_L3_MASK) == RTE_PTYPE_INNER_L3_IPV6_EXT) {
             ret = rte_net_skip_ip6_ext(proto, mbuf, &offset, &frag);
             if (ret < 0) {
-                rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "skip ipv6 extensions failed\n");
+                M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "skip ipv6 extensions failed\n");
                 goto error;
             }
             proto = ret;
@@ -590,7 +583,7 @@ L3:
         const struct rte_udp_hdr *uh;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*uh))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
@@ -613,7 +606,7 @@ L3:
         const struct rte_tcp_hdr *th;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*th))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 
@@ -636,7 +629,7 @@ L3:
         const struct rte_sctp_hdr *sh;
 
         if (unlikely(rte_pktmbuf_data_len(mbuf) - offset < sizeof(*sh))) {
-            rte_log_f(RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
+            M_LOG(decoder.log, RTE_LOG_ERR, MOD_ID_DECODER, "pkt data len check failed\n");
             goto error;
         }
 

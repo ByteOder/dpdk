@@ -28,7 +28,7 @@ typedef struct {
     int cli_sockfd;
     void *rx_queues[MAX_WORKER_NUM];
     void *tx_queues[MAX_PORT_NUM][MAX_QUEUE_NUM];
-    void *interface_config;
+    void *itf_cfg;
     void *acl_ctx;
     int reload_mark;    /** mark for configuration reload */
     int switch_mark;    /** mark for configuration switch */

@@ -101,35 +101,38 @@ int main(int argc, char **argv)
     int lcore_id;
     int ret = 0;
 
-    printf("==== firewall built at 2023 12 15 =====\n");
+    printf("==== firewall built at 2024 01 01 =====\n");
 
-    /**
-     * init EAL
+    /** Init EAL
      * */
     ret = rte_eal_init(argc, argv);
     if (ret < 0) {
-        rte_exit(EXIT_FAILURE, "invalid eal parameters\n");
+        rte_exit(EXIT_FAILURE, "rte eal init failed\n");
     }
     argc -= ret;
     argv += ret;
 
-    /**
-     * register signal handlers
+    /** Open debug log stream
+     * */
+    ret = _rte_log_init("/opt/firewall/log/firewall.log", RTE_LOG_DEBUG);
+    if (ret) {
+        rte_exit(EXIT_FAILURE, "rte init log failed\n");
+    }
+
+    /** Register signal handlers
      * */
     force_quit = false;
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    /**
-     * init mbuf pool
+    /** Init mbuf pool
      * */
     m_cfg->pktmbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 8192, 256, sizeof(packet_t), 128 + 2048, rte_socket_id());
     if (!m_cfg->pktmbuf_pool) {
         rte_exit(EXIT_FAILURE, "create pktmbuf pool failed\n");
     }
     
-    /**
-     * lcores check and alloc
+    /** Alloc role for each lcore
      * 2 = 1 mgt-core + 1 rtx-worker-core
      * 4 = 1 mgt-core + 1 rtx-core + 2 worker-core
      * 8 = 1 mgt-core + 1 rx-core + 1 tx-core + 5 worker-core
@@ -142,12 +145,10 @@ int main(int argc, char **argv)
     }
 
     m_cfg->mgt_core = rte_get_main_lcore();
-    printf("mgt-core: %d\n", m_cfg->mgt_core);
 
     RTE_LCORE_FOREACH(lcore_id) {
         if (lcores == 2) {
             if (lcore_id != m_cfg->mgt_core) {
-                printf("rtx-worker-core: %d\n", lcore_id);
                 m_cfg->rtx_worker_core = lcore_id;
                 m_cfg->worker_num ++;
             }
@@ -157,9 +158,7 @@ int main(int argc, char **argv)
             if (lcore_id != m_cfg->mgt_core) {
                 if (m_cfg->rtx_core == -1) {
                     m_cfg->rtx_core = lcore_id;
-                    printf("rtx-core: %d\n", m_cfg->rtx_core);
                 } else {
-                    printf("worker-core: %d\n", lcore_id);
                     m_cfg->worker_num ++;
                 }
             }
@@ -169,41 +168,36 @@ int main(int argc, char **argv)
             if (lcore_id != m_cfg->mgt_core) {
                 if (m_cfg->rx_core == -1) {
                     m_cfg->rx_core = lcore_id;
-                    printf("rx-core: %d\n", m_cfg->rx_core);
                     continue;
                 } 
 
                 if (m_cfg->tx_core == -1) {
                     m_cfg->tx_core = lcore_id;
-                    printf("tx-core: %d\n", m_cfg->tx_core);
                     continue;
                 }
 
-                printf("worker-core: %d\n", lcore_id);
                 m_cfg->worker_num ++;
             }
         }
     }
 
-    /**
-     * port check
+    /** Port num check
      * */
     m_cfg->port_num = rte_eth_dev_count_avail();
     if (m_cfg->port_num < 2) {
         rte_exit(EXIT_FAILURE, "need 2 port at least");
     }
 
-    /**
-     * init worker
-     * 1. create rx and tx queue for each worker
+    /** Init worker
+     * create RX and TX queues for mbuf flow
      * */
     ret = worker_init(m_cfg);
     if (ret) {
         rte_exit(EXIT_FAILURE, "worker init erorr\n");
     }
 
-    /**
-     * init command line
+    /** Init command line
+     * must before modules init
      * */
     ret = _cli_init(m_cfg);
     if (ret) {
@@ -212,8 +206,7 @@ int main(int argc, char **argv)
 
     CLI_CMD_C(m_cfg->cli_def, m_cfg->cli_show, "config", cli_show_conf, "global configuration");
 
-    /**
-     * modules register and initialize
+    /** Modules register and initialize
      * */
     modules_load();
     ret = modules_init(m_cfg);
@@ -221,26 +214,16 @@ int main(int argc, char **argv)
         rte_exit(EXIT_FAILURE, "module init erorr\n");
     }
 
-    /**
-     * start up worker loop on each lcore, except mgt-core
+    /** Start up worker loop on each lcore
      * */
     rte_eal_mp_remote_launch(main_loop, (void *)m_cfg, SKIP_MAIN);
 
-    /**
-     * start up management loop on mgt-core
+    /** Start up management loop on management core
      * */
     mgmt_loop(m_cfg);
 
     ret = 0;
-
-    /**
-     * wait lcore
-     * */
     rte_eal_mp_wait_lcore();
-
-    /**
-     * cleanup EAL
-     * */
     rte_eal_cleanup();
 
     return ret;

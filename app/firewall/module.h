@@ -11,15 +11,8 @@
 #include <rte_mbuf.h>
 #include <rte_log.h>
 
-/**
- * module section.
- * */
 #define __module__ __attribute((section(".module_section")))
 
-
-/**
- * module id
- * */
 typedef enum {
     MOD_ID_NONE,
     MOD_ID_INTERFACE,
@@ -27,10 +20,6 @@ typedef enum {
     MOD_ID_ACL,
 } mod_id_t;
 
-
-/**
- * module hook. 
- */
 typedef enum {
     MOD_HOOK_RECV,
     MOD_HOOK_INGRESS,
@@ -43,27 +32,15 @@ typedef enum {
     MOD_HOOK_SEND,
 } mod_hook_t;
 
-
-/**
- * module return value. 
- */
 typedef enum {
     MOD_RET_ACCEPT,
     MOD_RET_STOLEN,
 } mod_ret_t;
 
-
-/**
- * module function.
- * */
 typedef mod_ret_t (*mod_func_t)(void *config, struct rte_mbuf *mbuf, mod_hook_t hook);
 typedef int (*mod_init_t)(void *config);
 typedef int (*mod_conf_t)(void *config);
 
-
-/**
- * module struct.
- */
 #pragma pack(1)
 
 typedef struct {
@@ -71,27 +48,19 @@ typedef struct {
     uint16_t id;                /** module id */
     bool enabled;               /** module switch */
     bool log;                   /** log switch */
-    const char *logf;           /** log file path */
     mod_init_t init;            /** init function */
     mod_func_t proc;            /** process function */
     mod_conf_t conf;            /** config function */
     void *priv;                 /** private use */
-    char reserved[12];          /** reserved */
+    char reserved[20];          /** reserved */
 } module_t;
 
 #pragma pack()
 
-/**
- * module array. 
- */
 #define MAX_MODULE_NUM 128
 extern int max_module_id;
 extern module_t* modules[MAX_MODULE_NUM];
 
-
-/**
- * module macro.
- * */
 #define MODULE_DECLARE(m) module_t m __module__
 
 #define MODULE_REGISTER(m) \
@@ -107,10 +76,6 @@ do { \
 #define MODULE_FOREACH(m, id) \
     for (id = 0, m = modules[id]; id <= max_module_id; m = modules[++id])
 
-
-/**
- * module public interface.
- * */
 int modules_load(void);
 int modules_init(void *config);
 int modules_proc(void *config, struct rte_mbuf *pkt, mod_hook_t hook);

@@ -11,8 +11,6 @@ int max_module_id = -1;
 
 int modules_load(void)
 {
-    printf("modules load\n");
-
     module_t *m;
 
     for (m = &__module_start__; m < &__module_end__; m ++) {
@@ -24,14 +22,11 @@ int modules_load(void)
 
 int modules_init(void *config)
 {
-    printf("modules init\n");
-
     __rte_unused module_t *m;
     __rte_unused int id;
 
     MODULE_FOREACH(m, id) {
         if (m && m->init && m->enabled) {
-            printf("[%d] %s init\n", id, m->name);
             if (m->init(config)) {
                 return -1;
             }
@@ -43,14 +38,11 @@ int modules_init(void *config)
 
 int modules_conf(void *config)
 {
-    printf("modules conf\n");
-
     __rte_unused module_t *m;
     __rte_unused int id;
 
     MODULE_FOREACH(m, id) {
         if (m && m->conf && m->enabled) {
-            printf("[%d] %s conf\n", id, m->name);
             if (m->conf(config)) {
                 return -1;
             }

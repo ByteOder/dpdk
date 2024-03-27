@@ -29,9 +29,6 @@ static struct rte_logs {
 	uint32_t type;  /**< Bitfield with enabled logs. */
 	uint32_t level; /**< Log level. */
 	FILE *file;     /**< Output file set by rte_openlog_stream, or NULL. */
-	FILE *f[64];
-	uint32_t t[64];
-	uint32_t l[64];
 	size_t dynamic_types_len;
 	struct rte_log_dynamic_type *dynamic_types;
 } rte_logs = {
@@ -82,22 +79,15 @@ rte_openlog_stream(FILE *f)
 }
 
 int
-rte_log_init(const char *logpath, uint32_t logtype, uint32_t level)
+_rte_log_init(const char *fname, uint32_t level)
 {
-	FILE *f = fopen(logpath, "w+");
+	FILE *f = fopen(fname, "w+");
 	if (!f) {
 		return -1;
 	}
 
-	if (rte_logs.f[logtype]) {
-		return -1;
-	}
-
-	rte_logs.t[logtype] = logtype;
-	rte_logs.f[logtype] = f;
-
-	rte_log_set_l(logtype, level);
-
+	rte_logs.file = f;
+	rte_logs.level = (uint32_t)level;
 	return 0;
 }
 
@@ -160,6 +150,15 @@ rte_log_can_log(uint32_t logtype, uint32_t level)
 	return true;
 }
 
+bool
+_rte_log_can_log(__rte_unused uint32_t logtype, uint32_t level)
+{
+	if (level > rte_log_get_global_level())
+		return false;
+
+	return true;
+}
+
 static void
 logtype_set_level(uint32_t type, uint32_t level)
 {
@@ -184,14 +183,6 @@ rte_log_set_level(uint32_t type, uint32_t level)
 		return -1;
 
 	logtype_set_level(type, level);
-
-	return 0;
-}
-
-int
-rte_log_set_l(uint32_t type, uint32_t level)
-{
-	rte_logs.l[type] = level;
 
 	return 0;
 }
@@ -536,18 +527,18 @@ rte_vlog(uint32_t level, uint32_t logtype, const char *format, va_list ap)
 	return ret;
 }
 
-static int
-rte_vlog_f(uint32_t level, uint32_t logtype, const char *format, va_list ap)
+int
+_rte_vlog(uint32_t level, uint32_t logtype, const char *format, va_list ap)
 {
-	FILE *f = rte_logs.f[logtype];
+	FILE *f = rte_log_get_stream();
 	int ret;
 
-	if (!f) {
+	if (!_rte_log_can_log(logtype, level))
 		return 0;
-	}
 
-	if (level > rte_logs.l[logtype])
-		return 0;
+	/* save loglevel and logtype in a global per-lcore variable */
+	RTE_PER_LCORE(log_cur_msg).loglevel = level;
+	RTE_PER_LCORE(log_cur_msg).logtype = logtype;
 
 	ret = vfprintf(f, format, ap);
 	fflush(f);
@@ -572,13 +563,13 @@ rte_log(uint32_t level, uint32_t logtype, const char *format, ...)
 }
 
 int
-rte_log_f(uint32_t level, uint32_t logtype, const char *format, ...)
+_rte_log(uint32_t level, uint32_t logtype, const char *format, ...)
 {
 	va_list ap;
 	int ret;
 
 	va_start(ap, format);
-	ret = rte_vlog_f(level, logtype, format, ap);
+	ret = _rte_vlog(level, logtype, format, ap);
 	va_end(ap);
 	return ret;
 }

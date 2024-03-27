@@ -81,7 +81,6 @@ MODULE_DECLARE(acl) = {
     .id = MOD_ID_ACL,
     .enabled = true,
     .log = true,
-    .logf = "/opt/firewall/log/acl.log",
     .init = acl_init,
     .proc = acl_proc,
     .conf = acl_conf,
@@ -513,13 +512,6 @@ int acl_conf(void *config)
 
 int acl_init(void *config)
 {
-    if (acl.log) {
-        if (rte_log_init(acl.logf, MOD_ID_ACL, RTE_LOG_DEBUG)) {
-            printf("rte log init failed\n");
-            return -1;
-        }
-    }
-
     if (acl_conf(config)) {
         printf("acl conf failed\n");
         return -1;
@@ -533,7 +525,7 @@ int acl_init(void *config)
 static mod_ret_t 
 acl_proc_ingress(config_t *config, struct rte_mbuf *mbuf)
 {
-    rte_log_f(RTE_LOG_DEBUG, MOD_ID_ACL, "== acl proc ingress\n");
+    M_LOG(acl.log, RTE_LOG_DEBUG, MOD_ID_ACL, "== acl proc ingress\n");
 
     struct rte_acl_ctx *acl_ctx;
     struct rte_acl_rule_data *data;
@@ -559,27 +551,29 @@ acl_proc_ingress(config_t *config, struct rte_mbuf *mbuf)
         goto done;
     }
 
-    rte_log_f(RTE_LOG_DEBUG, MOD_ID_ACL, "packet proto %u sip %u dip %u sp %u dp %u\n",
+    M_LOG(acl.log, RTE_LOG_DEBUG, MOD_ID_ACL, "packet proto %u sip %u dip %u sp %u dp %u\n",
         k->proto, k->sip, k->dip, k->sp, k->dp);
 
     if (!r){
-        rte_log_f(RTE_LOG_DEBUG, MOD_ID_ACL, "no acl rule match\n");
+        M_LOG(acl.log, RTE_LOG_DEBUG, MOD_ID_ACL, "no acl rule match\n");
         goto done;
     }
 
     data = rte_acl_rule_data(acl_ctx, r);
     if (!data) {
-        rte_log_f(RTE_LOG_DEBUG, MOD_ID_ACL, "illegal acl rule id\n");
+        M_LOG(acl.log, RTE_LOG_DEBUG, MOD_ID_ACL, "illegal acl rule id\n");
         goto done;
     }
 
-    rte_log_f(RTE_LOG_DEBUG, MOD_ID_ACL, "match acl id %u action %u\n", r, data->action);
+    M_LOG(acl.log, RTE_LOG_DEBUG, MOD_ID_ACL, "match acl id %u action %u\n", r, data->action);
 
     if (data->action == ACL_ACTION_DENY) {
         rte_pktmbuf_free(mbuf);
-        rte_log_f(RTE_LOG_DEBUG, MOD_ID_ACL, "acl deny drop packet\n");
+        M_LOG(acl.log, RTE_LOG_DEBUG, MOD_ID_ACL, "acl action deny\n");
         return MOD_RET_STOLEN;
     }
+
+    M_LOG(acl.log, RTE_LOG_DEBUG, MOD_ID_ACL, "acl action pass\n");
 
 done:
     return MOD_RET_ACCEPT;

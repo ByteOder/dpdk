@@ -31,7 +31,7 @@ cd ${WORK_PATH}
 # build all examples use -Dexamples=all
 
 if [ $1 == "debug" ]; then
-    meson -Dexamples=helloworld -Dbuildtype=debug build
+    meson -Dexamples=helloworld -Db_sanitize=address -Db_lundef=false -Dbuildtype=debug build
 else
     meson -Dexamples=helloworld build
 fi
