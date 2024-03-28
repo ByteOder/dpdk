@@ -50,6 +50,7 @@ telnet <localhost> 8000
 that will open a command line terminal, login with alan:alan, to switch privileged account, run command
 'enable' in the terminal, the password is 'superman'.
 
+
 ## ABOUT AUTHOR
 ---
 - author: alan
