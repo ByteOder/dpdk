@@ -1,40 +1,57 @@
-* A Firewall Practice Based on DPDK
+# A Firewall Practice Based on DPDK
 ---
 
-** BUILD
+## BUILD
 ---
 - first time build in a new environment:
-`source build.sh`
+```
+source build.sh
+```
 
 - for debug version:
-`source build.sh debug`
+```
+source build.sh debug
+```
 
 - latter:
-`ninja -C build`
+```
+ninja -C build
+```
 
-** DEPLOY
+## DEPLOY
 ---
 - list all network interfaces which can be bind to DPDK driver:
-`./deploy.sh`
+```
+./deploy.sh
+```
 
 - then select 2 network interfaces to bind:
-`./deploy.sh <NIC1> <NIC2>`
+```
+./deploy.sh <NIC1> <NIC2>
+```
 
-** RUN
+## RUN
 ---
 - firstly, some environment variables should be set before run firewall application:
-`source run.sh`
+```
+source run.sh
+```
 
 - then you can run app by:
-`dpdk-firewall -l 0-3 -n 4`
+```
+dpdk-firewall -l 0-3 -n 4
+```
 
 - if you want to control or show app's inner stat, run:
-`telnet <localhost> 8000`
+```
+telnet <localhost> 8000
+```
 
 that will open a command line terminal, login with alan:alan, to switch privileged account, run command
 'enable' in the terminal, the password is 'superman'.
 
-** ABOUT AUTHOR
+
+## ABOUT AUTHOR
 ---
 - author: alan
 - email: ifindv@gmail.com
