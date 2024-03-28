@@ -84,6 +84,7 @@ MODULE_DECLARE(acl) = {
     .init = acl_init,
     .proc = acl_proc,
     .conf = acl_conf,
+    .free = acl_free,
     .priv = NULL
 };
 
@@ -93,7 +94,7 @@ acl_rule_load(config_t *config)
     struct rte_acl_ctx *acl_ctx;
     char *p = NULL;
     json_object *jr = NULL, *ja;
-    int i, rule_num;
+    int i, j, rule_num;
     int ret = 0;
 
     acl_ctx = config->acl_ctx;
@@ -121,7 +122,7 @@ acl_rule_load(config_t *config)
             goto done; \
         }
 
-    for (i = 0; i < rule_num; i++) {
+    for (i = 0, j = 0; i < rule_num; i++) {
         json_object *jo, *jv;
         char ip[16], mask[4];
 
@@ -133,8 +134,8 @@ acl_rule_load(config_t *config)
         }
 
         ACL_JV("id");
-        r[i].data.priority = JV_I(jv);
-        r[i].data.userdata = r[i].data.priority;
+        r[j].data.priority = JV_I(jv);
+        r[j].data.userdata = r[j].data.priority;
 
         memset(ip, 0, 16);
         memset(mask, 0, 4);
@@ -143,11 +144,11 @@ acl_rule_load(config_t *config)
         if ((p = strstr(JV_S(jv), "/")) != NULL) {
             *p = ' ';
             sscanf(JV_S(jv), "%s %s", ip, mask);
-            r[i].field[1].value.u32 = ntohl(inet_addr(ip));
-            r[i].field[1].mask_range.u32 = atoi(mask);
+            r[j].field[1].value.u32 = ntohl(inet_addr(ip));
+            r[j].field[1].mask_range.u32 = atoi(mask);
         } else {
-            r[i].field[1].value.u32 = ntohl(inet_addr(JV_S(jv)));
-            r[i].field[1].mask_range.u32 = 32;
+            r[j].field[1].value.u32 = ntohl(inet_addr(JV_S(jv)));
+            r[j].field[1].mask_range.u32 = 32;
         }
 
         memset(ip, 0, 16);
@@ -157,34 +158,36 @@ acl_rule_load(config_t *config)
         if ((p = strstr(JV_S(jv), "/")) != NULL) {
             *p = ' ';
             sscanf(JV_S(jv), "%s %s", ip, mask);
-            r[i].field[2].value.u32 = ntohl(inet_addr(ip));
-            r[i].field[2].mask_range.u32 = atoi(mask);
+            r[j].field[2].value.u32 = ntohl(inet_addr(ip));
+            r[j].field[2].mask_range.u32 = atoi(mask);
         } else {
-            r[i].field[2].value.u32 = ntohl(inet_addr(JV_S(jv)));
-            r[i].field[2].mask_range.u32 = 32;
+            r[j].field[2].value.u32 = ntohl(inet_addr(JV_S(jv)));
+            r[j].field[2].mask_range.u32 = 32;
         }
 
         ACL_JV("sp");
-        r[i].field[3].value.u16 = JV_I(jv);
-        r[i].field[3].mask_range.u16 = 0xffff;
+        r[j].field[3].value.u16 = JV_I(jv);
+        r[j].field[3].mask_range.u16 = 0xffff;
 
         ACL_JV("dp");
-        r[i].field[4].value.u16 = JV_I(jv);
-        r[i].field[4].mask_range.u16 = 0xffff;
+        r[j].field[4].value.u16 = JV_I(jv);
+        r[j].field[4].mask_range.u16 = 0xffff;
 
         ACL_JV("proto");
-        r[i].field[0].value.u8 = JV_I(jv);
-        r[i].field[0].mask_range.u8 = 0xff;
+        r[j].field[0].value.u8 = JV_I(jv);
+        r[j].field[0].mask_range.u8 = 0xff;
 
         ACL_JV("action");
-        r[i].data.category_mask = 1;
-        r[i].data.action = JV_I(jv);
+        r[j].data.category_mask = 1;
+        r[j].data.action = JV_I(jv);
+
+        j ++;
     }
 
     #undef ACL_JV
 
-    if (rule_num) {
-        if (rte_acl_add_rules(acl_ctx, (const struct rte_acl_rule *)r, rule_num)) {
+    if (j) {
+        if (rte_acl_add_rules(acl_ctx, (const struct rte_acl_rule *)r, j)) {
             printf("add acl rules failed\n");
             ret = -1;
             goto done;
@@ -487,6 +490,13 @@ acl_cli_register(config_t *config)
     CLI_OPT(c1, "proto", "transport layer protocol");
     CLI_OPT(c1, "action", "do action when rule matched");
     CLI_OPT(c1, "enabled", "switch of rule");
+}
+
+int acl_free(void *config)
+{
+    config_t *c = config;
+    rte_acl_reset_rules(c->acl_ctx);
+    return 0;
 }
 
 int acl_conf(void *config)

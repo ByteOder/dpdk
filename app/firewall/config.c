@@ -66,6 +66,8 @@ config_t *config_switch(config_t *c, int lcore_id)
                 break;
             }
         }
+
+        modules_free(c);
     } else {
         /** Each worker switch config immediately */
         _config_I[lcore_id] = (_config_I[lcore_id] <= 0) ? 1 : _config_I[lcore_id] + 1;

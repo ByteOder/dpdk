@@ -12,6 +12,7 @@
 int acl_init(void *config);
 mod_ret_t acl_proc(void *config, struct rte_mbuf *mbuf, mod_hook_t hook);
 int acl_conf(void *config);
+int acl_free(void *config);
 
 #endif
 

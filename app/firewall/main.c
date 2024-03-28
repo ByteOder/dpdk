@@ -90,6 +90,7 @@ mgmt_loop(__rte_unused config_t *c)
                 _c->switch_mark = 1;
                 _c = config_switch(_c, -1);
                 cli_set_context(_c->cli_def, _c);
+                m_cfg = _c;
             }
         }
         _cli_run(_c);
@@ -224,6 +225,7 @@ int main(int argc, char **argv)
 
     ret = 0;
     rte_eal_mp_wait_lcore();
+    modules_free(m_cfg);
     rte_eal_cleanup();
 
     return ret;

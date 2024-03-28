@@ -18,6 +18,8 @@ MODULE_DECLARE(interface) = {
     .log = true,
     .init = interface_init,
     .proc = interface_proc,
+    .conf = NULL,
+    .free = NULL,
     .priv = NULL
 };
 
@@ -87,6 +89,7 @@ int interface_init(void *config)
     uint16_t nb_tx_desc = 1024;
     int ret;
 
+    memset(&port_conf, 0, sizeof(struct rte_eth_conf));
     port_conf.rxmode.split_hdr_size = 0;
     port_conf.txmode.mq_mode = RTE_ETH_MQ_TX_NONE;
 

@@ -40,6 +40,7 @@ typedef enum {
 typedef mod_ret_t (*mod_func_t)(void *config, struct rte_mbuf *mbuf, mod_hook_t hook);
 typedef int (*mod_init_t)(void *config);
 typedef int (*mod_conf_t)(void *config);
+typedef int (*mod_free_t)(void *config);
 
 #pragma pack(1)
 
@@ -50,9 +51,10 @@ typedef struct {
     bool log;                   /** log switch */
     mod_init_t init;            /** init function */
     mod_func_t proc;            /** process function */
-    mod_conf_t conf;            /** config function */
+    mod_conf_t conf;            /** reload config */
+    mod_free_t free;            /** free unused resource */
     void *priv;                 /** private use */
-    char reserved[20];          /** reserved */
+    char reserved[12];          /** reserved */
 } module_t;
 
 #pragma pack()
@@ -80,6 +82,7 @@ int modules_load(void);
 int modules_init(void *config);
 int modules_proc(void *config, struct rte_mbuf *pkt, mod_hook_t hook);
 int modules_conf(void *config);
+int modules_free(void *config);
 
 #endif
 

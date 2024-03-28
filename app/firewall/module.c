@@ -52,6 +52,22 @@ int modules_conf(void *config)
     return 0;
 }
 
+int modules_free(void *config)
+{
+    __rte_unused module_t *m;
+    __rte_unused int id;
+
+    MODULE_FOREACH(m, id) {
+        if (m && m->free && m->enabled) {
+            if (m->free(config)) {
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
 int modules_proc(void *config, struct rte_mbuf *pkt, mod_hook_t hook)
 {
     module_t *m;

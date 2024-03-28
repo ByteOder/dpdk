@@ -21,6 +21,8 @@ MODULE_DECLARE(decoder) = {
     .log = true,
     .init = decoder_init,
     .proc = decoder_proc,
+    .conf = NULL,
+    .free = NULL,
     .priv = NULL
 };
 
