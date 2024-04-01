@@ -84,13 +84,14 @@ int interface_init(void *config)
     config_t *c = config;
     struct rte_eth_conf port_conf;
     struct rte_eth_dev_info dev_info;
-    uint16_t portid, rx_queues, tx_queues, i;
+    uint16_t portid, i;
     uint16_t nb_rx_desc = 1024;
     uint16_t nb_tx_desc = 1024;
     int ret;
 
     memset(&port_conf, 0, sizeof(struct rte_eth_conf));
     port_conf.rxmode.split_hdr_size = 0;
+    port_conf.rxmode.mq_mode = RTE_ETH_MQ_RX_RSS;
     port_conf.txmode.mq_mode = RTE_ETH_MQ_TX_NONE;
 
     c->itf_cfg = malloc(sizeof(interface_config_t));
@@ -109,8 +110,6 @@ int interface_init(void *config)
         return -1;
     }
 
-    rx_queues = tx_queues = 0;
-
     RTE_ETH_FOREACH_DEV(portid) {
         ret = rte_eth_dev_info_get(portid, &dev_info);
         if (ret) {
@@ -118,34 +117,19 @@ int interface_init(void *config)
             return -1;
         }
 
-        if (dev_info.max_rx_queues > c->worker_num) {
-            rx_queues = c->worker_num;
-        } else {
-            rx_queues = dev_info.max_rx_queues;
-        }
+        c->rxq_num = (dev_info.max_rx_queues > c->worker_num) ?
+            c->worker_num : dev_info.max_rx_queues;
 
-        if (dev_info.max_tx_queues > c->worker_num) {
-            tx_queues = c->worker_num;
-        } else {
-            tx_queues = dev_info.max_tx_queues;
-        }
+        c->txq_num = (dev_info.max_tx_queues > c->worker_num) ?
+            c->worker_num : dev_info.max_tx_queues;
 
-        ret = rte_eth_dev_configure(portid, rx_queues, tx_queues, &port_conf);
+        ret = rte_eth_dev_configure(portid, c->rxq_num, c->txq_num, &port_conf);
         if (ret < 0) {
             printf("rte eth dev configure failed\n");
             return -1;
         }
 
-        uint16_t rxds = nb_rx_desc * rx_queues;
-        uint16_t txds = nb_tx_desc * tx_queues;
-
-        ret = rte_eth_dev_adjust_nb_rx_tx_desc(portid, &rxds, &txds);
-        if (ret < 0) {
-            printf("rte eth dev adjust nb rx tx desc failed\n");
-            return -1;
-        }
-
-        for (i = 0; i < rx_queues; i++) {
+        for (i = 0; i < c->rxq_num; i++) {
             ret = rte_eth_rx_queue_setup(portid, i, nb_rx_desc, rte_eth_dev_socket_id(portid),
                 &dev_info.default_rxconf, c->pktmbuf_pool);
             if (ret < 0) {
@@ -154,7 +138,7 @@ int interface_init(void *config)
             }
         }
 
-        for (i = 0; i < tx_queues; i++) {
+        for (i = 0; i < c->txq_num; i++) {
             ret = rte_eth_tx_queue_setup(portid, i, nb_tx_desc, rte_eth_dev_socket_id(portid),
                 &dev_info.default_txconf);
             if (ret < 0) {
@@ -190,16 +174,14 @@ int interface_init(void *config)
 static int
 interface_proc_recv(config_t *config)
 {
-    struct rte_mbuf *pkts_burst[MAX_PKT_BURST];
+    struct rte_mbuf *pkts_burst[MAX_PKT_BURST] = {0};
     packet_t *p;
     int i, nb_rx, portid, queueid;
 
     RTE_ETH_FOREACH_DEV(portid) {
-        for (queueid = 0; queueid < config->worker_num; queueid ++) {
+        for (queueid = 0; queueid < config->rxq_num; queueid ++) {
             nb_rx = rte_eth_rx_burst(portid, queueid, pkts_burst, MAX_PKT_BURST);
             if (nb_rx) {
-                M_LOG(interface.log, RTE_LOG_DEBUG, MOD_ID_INTERFACE, "\nrecv %d pkt from %d-%d\n", nb_rx, portid, queueid);
-
                 for (i = 0; i < nb_rx; i++) {
                     p = rte_mbuf_to_priv(pkts_burst[i]);
                     if (p) {
@@ -207,10 +189,7 @@ interface_proc_recv(config_t *config)
                     }
                 }
 
-                /**
-                 * enqueue must sucess.
-                 * */
-                while (!rte_ring_enqueue_bulk(config->rx_queues[queueid], (void *const *)pkts_burst, nb_rx, NULL)) {;};
+                while (!rte_ring_enqueue_bulk(config->rx_queues[queueid], (void *const *)pkts_burst, nb_rx, NULL));
                 M_LOG(interface.log, RTE_LOG_DEBUG, MOD_ID_INTERFACE, "enqueue worker rx queue %d\n", queueid);
             }
         }
@@ -251,7 +230,7 @@ interface_proc_send(config_t *config)
     int nb_tx, tx, portid, queueid;
 
     for (portid = 0; portid < config->port_num; portid ++) {
-        for (queueid = 0; queueid < config->worker_num; queueid ++) {
+        for (queueid = 0; queueid < config->txq_num; queueid ++) {
             nb_tx = rte_ring_count(config->tx_queues[portid][queueid]);
             if (!nb_tx) {
                 continue;

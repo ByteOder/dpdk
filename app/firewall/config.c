@@ -23,6 +23,8 @@ config_t config_A = {
     .rtx_worker_core = -1,
     .rx_queues = {0},
     .tx_queues = {{0}, {0}, {0}, {0}, {0}, {0}, {0}, {0}},
+    .rxq_num = 0,
+    .txq_num = 0,
     .reload_mark = 0,
     .switch_mark = 0,
 };

@@ -43,10 +43,31 @@ cli_show_conf(struct cli_def *cli, const char *command, char *argv[], int argc)
     CLI_PRINT(cli, "command %s argv[0] %s argc %d", command, argv[0], argc);
 
     config_t *c = cli_get_context(cli);
-    CLI_PRINT(cli, "working with config %s\n", (c == &config_A) ? "A" : "B");
-    CLI_PRINT(cli, "indicator [%d %d %d %d %d %d %d %d] %d\n", 
+    CLI_PRINT(cli, "working copy config-%s", (c == &config_A) ? "A" : "B");
+    CLI_PRINT(cli, "indicator [%d %d %d %d %d %d %d %d] %d", 
         _config_I[0], _config_I[1], _config_I[2], _config_I[3],
         _config_I[4], _config_I[5], _config_I[6], _config_I[7], config_I);
+
+    CLI_PRINT(cli, "pktmbuf pool %p", c->pktmbuf_pool);
+    CLI_PRINT(cli, "promiscuous %d", c->promiscuous);
+    CLI_PRINT(cli, "worker num %d", c->worker_num);
+    CLI_PRINT(cli, "port num %d", c->port_num);
+    CLI_PRINT(cli, "mangement core id %d", c->mgt_core);
+    CLI_PRINT(cli, "rx core id %d", c->rx_core);
+    CLI_PRINT(cli, "tx core id %d", c->tx_core);
+    CLI_PRINT(cli, "rtx core id %d", c->rtx_core);
+    CLI_PRINT(cli, "rtx worker core id %d", c->rtx_worker_core);
+    CLI_PRINT(cli, "cli def %p", c->cli_def);
+    CLI_PRINT(cli, "cli show %p", c->cli_show);
+    CLI_PRINT(cli, "cli socket id %d", c->cli_sockfd);
+    CLI_PRINT(cli, "rx queues %p", c->rx_queues);
+    CLI_PRINT(cli, "tx queues %p", c->tx_queues);
+    CLI_PRINT(cli, "rx queue num %d", c->rxq_num);
+    CLI_PRINT(cli, "tx queue num %d", c->txq_num);
+    CLI_PRINT(cli, "interface config %p", c->itf_cfg);
+    CLI_PRINT(cli, "acl context %p", c->acl_ctx);
+    CLI_PRINT(cli, "reload mark %d", c->reload_mark);
+    CLI_PRINT(cli, "switch mark %d", c->switch_mark);
     return 0;
 }
 
@@ -128,7 +149,7 @@ int main(int argc, char **argv)
 
     /** Init mbuf pool
      * */
-    m_cfg->pktmbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 8192, 256, sizeof(packet_t), 128 + 2048, rte_socket_id());
+    m_cfg->pktmbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 81920, 256, sizeof(packet_t), 128 + 2048, rte_socket_id());
     if (!m_cfg->pktmbuf_pool) {
         rte_exit(EXIT_FAILURE, "create pktmbuf pool failed\n");
     }
