@@ -1,8 +1,6 @@
 # A Firewall Practice Based on DPDK
----
 
 ## BUILD
----
 - first time build in a new environment:
 ```
 source build.sh
@@ -19,7 +17,6 @@ ninja -C build
 ```
 
 ## DEPLOY
----
 - list all network interfaces which can be bind to DPDK driver:
 ```
 ./deploy.sh
@@ -31,7 +28,6 @@ ninja -C build
 ```
 
 ## RUN
----
 - firstly, some environment variables should be set before run firewall application:
 ```
 source run.sh
@@ -52,6 +48,5 @@ that will open a command line terminal, login with alan:alan, to switch privileg
 
 
 ## ABOUT AUTHOR
----
 - author: alan
 - email: ifindv@gmail.com
